@@ -1,0 +1,7 @@
+.venv
+__pycache__
+.vscode
+.git
+data/pgdata
+data/upload_data
+.MD

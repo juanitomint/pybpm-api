@@ -20,6 +20,63 @@ This document describes how to implement the BPM Model Repository CRUD API by po
 
 ---
 
+## Progress Tracker
+
+<!-- Agents: check off [x] each item as it's completed. Pick up where the last unchecked box is. -->
+
+### 0. Scaffolding & Infrastructure
+- [ ] Add `python-multipart` dependency to pyproject.toml (for multipart form uploads)
+- [ ] Create `pybpm/static/svg/` directory (auto-created at startup if missing)
+- [ ] Add Alembic migration to drop `svg TEXT` column from `bpm_models` table
+- [ ] Update existing conftest.py / test fixtures for repository tests
+
+### 1. Data Layer
+- [ ] Create `pybpm/models/bpm_model.py` with `BpmModel` SQLAlchemy class (no `svg` column, `svg_path` property)
+- [ ] Create `pybpm/repository_schemas.py` with Pydantic request/response models:
+  - `ModelCreate`, `ModelUpdate`, `ModelDuplicateRequest`, `SaveAsRequest`, `FolderUpdate`
+  - `ImportResponse`, `ModelRead` (no svg field in read response)
+
+### 2. Auth Dependency
+- [ ] Create FastAPI JWT bearer dependency (`get_current_user`) using `python-jose` — no Flask/apifairy references
+
+### 3. Core Endpoints (CRUD)
+- [ ] Step 1: PUT `/api/v1/models/{idwf}` — save/update model + write SVG to disk
+- [ ] Step 2: POST `/api/v1/models/{idwf}/duplicate` — clone to new idwf
+- [ ] Step 3: POST `/api/v1/models/save-as` — save as new model with custom title
+- [ ] Step 4: POST `/api/v1/models` — create brand-new empty scaffold
+
+### 4. Read / Query Endpoints
+- [ ] Step 5: GET `/api/v1/models/check/{idwf}` — check existence (for editor validation)
+- [ ] Step 6: DELETE `/api/v1/models/{idwf}` — delete model by idwf
+- [ ] Step 7: GET `/api/v1/models/{idwf}` — load full model data (primary read, template fallback)
+- [ ] Step 8: GET `/api/v1/models/{idwf}/dump` — debug dump with expand flag
+
+### 5. Save Variant Endpoints
+- [ ] Step 9: POST `/api/v1/models/{idwf}/script` — save script (re-save full model state)
+- [ ] Step 10: POST `/api/v1/models/{idwf}/save` — save data payload with current SVG from disk
+
+### 6. SVG / Visual Endpoints
+- [ ] Step 11: GET `/api/v1/models/{idwf}/thumbnail` — stub (returns raw SVG, thumbnail gen deferred)
+- [ ] Step 12: GET `/api/v1/models/{idwf}/svg` — return formatted SVG from file on disk
+
+### 7. Shape / Comment Endpoints
+- [ ] Step 13: GET `/api/v1/models/{idwf}/shapes` — get all diagram shapes indexed by resourceId
+- [ ] Step 14: GET `/api/v1/models/{idwf}/comments/{resource_id}` — get shape documentation/comments
+
+### 8. Import / Bulk Operations
+- [ ] Step 15: POST `/api/v1/models/import` — upload + import `.zip` model archive (multipart)
+
+### 9. Folder Management
+- [ ] Step 16: PATCH `/api/v1/models/{idwf}/folder` — move model into different folder (HTML tag sanitization)
+
+### 10. Tests
+- [ ] Write integration tests in `pybpm/tests/test_repository.py` covering all 16 endpoints (~50 test functions)
+- [ ] Run full test suite: `uv run pytest` and confirm all green
+
+---
+
+**Order of implementation**: Scaffolding → Data Layer → Auth → Core CRUD (Steps 1-4) → Read/Query (5-8) → Save Variants (9-10) → SVG (11-12) → Shapes/Comments (13-14) → Import (15) → Folder (16) → Tests
+
 ## Existing Infrastructure Already in Place
 
 From the initial Alembic migration (`2026_07_13_0031-380f18722a18_initial_schema.py`):

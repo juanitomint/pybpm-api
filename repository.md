@@ -25,10 +25,10 @@ This document describes how to implement the BPM Model Repository CRUD API by po
 <!-- Agents: check off [x] each item as it's completed. Pick up where the last unchecked box is. -->
 
 ### 0. Scaffolding & Infrastructure
-- [ ] Add `python-multipart` dependency to pyproject.toml (for multipart form uploads)
-- [ ] Create `pybpm/static/svg/` directory (auto-created at startup if missing)
-- [ ] Add Alembic migration to drop `svg TEXT` column from `bpm_models` table
-- [ ] Update existing conftest.py / test fixtures for repository tests
+- [x] Add `python-multipart` dependency to pyproject.toml (for multipart form uploads)
+- [x] Create `pybpm/static/svg/` directory (auto-created at startup if missing)
+- [x] Add Alembic migration to drop `svg TEXT` column from `bpm_models` table
+- [x] Update existing conftest.py / test fixtures for repository tests
 
 ### 1. Data Layer
 - [ ] Create `pybpm/models/bpm_model.py` with `BpmModel` SQLAlchemy class (no `svg` column, `svg_path` property)

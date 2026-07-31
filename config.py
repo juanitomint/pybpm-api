@@ -37,12 +37,6 @@ class Config:
     ADMIN_GROUP_ID = int(os.environ.get("ADMIN_GROUP_ID", "1"))
     AUTODISCOVER_PATHS = as_bool(os.environ.get("AUTODISCOVER_PATHS", "false"))
 
-    APIFAIRY_TITLE = "PyBPM Repository API"
-    APIFAIRY_VERSION = "0.1.0"
-    APIFAIRY_UI_PATH = "/docs"
-    APIFAIRY_APISPEC_PATH = "/openapi.json"
-
-
 class DevelopmentConfig(Config):
     DEBUG = True
     SQLALCHEMY_ECHO = False

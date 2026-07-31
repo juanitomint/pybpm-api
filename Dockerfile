@@ -1,7 +1,6 @@
 FROM python:3.14-slim AS base
 
 ENV LOG_FORMATTER=json \
-    FLASK_APP=app.py \
     DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

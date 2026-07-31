@@ -11,7 +11,7 @@ This document describes how to implement the BPM Model Repository CRUD API by po
 | Aspect | Decision |
 |--------|----------|
 | Framework | **FastAPI** with async routes (`async def`) |
-| Auth | JWT Bearer tokens via `python-jose` (already in pyproject.toml) — no Flask/apifairy references anywhere |
+| Auth | JWT Bearer tokens via `python-jose` (already in pyproject.toml) 
 | ORM | SQLAlchemy 2.0 async (`AsyncSession`) |
 | DB | PostgreSQL (or SQLite for dev/tests, per existing config.py pattern) |
 | File uploads | Multipart form data with `python-multipart` for zip upload/extract |
@@ -37,7 +37,7 @@ This document describes how to implement the BPM Model Repository CRUD API by po
   - `ImportResponse`, `ModelRead` (no svg field in read response)
 
 ### 2. Auth Dependency
-- [ ] Create FastAPI JWT bearer dependency (`get_current_user`) using `python-jose` — no Flask/apifairy references
+- [ ] Create FastAPI JWT bearer dependency (`get_current_user`) using `python-jose`
 
 ### 3. Core Endpoints (CRUD)
 - [ ] Step 1: PUT `/api/v1/models/{idwf}` — save/update model + write SVG to disk
@@ -613,7 +613,7 @@ $this->bpm->update_folder($idwf, $folder);
 All endpoints require JWT bearer token authentication. Create a FastAPI dependency:
 
 ```python
-# auth.py (FastAPI-style, NOT Flask/apifairy)
+# auth.py (FastAPI-style)
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt

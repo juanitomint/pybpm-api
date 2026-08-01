@@ -2,20 +2,6 @@ IMAGE_REPOSITORY  ?= juanitomint/pybpmrepository
 CURRENT_DIR = $(shell pwd)
 GIT_LAST_TAG=$(shell git tag --sort=committerdate|tail -n 1)
 GIT_COMMIT=$(shell git rev-parse --short HEAD)
-GIT_TAG         ?=$(or ${CI_COMMIT_TAG},$(or ${GIT_LAST_TAG}, ${GIT_COMMIT} ) )
-IMAGE_TAG         ?= ${GIT_TAG}
-
-help:
-	@grep -E '^[\/a-zA-Z_-]+:.*?## .*
-
-
-
-.PHONY: printvars
-printvars: ## Prints make variables
-	$(foreach V, $(sort $(.VARIABLES)), \
-	$(if $(filter-out environment% default automatic, $(origin $V)),$(warning $V=$($V) ($(value $V)))) \
-	)
- $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $1, $2}'
 
 .PHONY: deps
 deps:  ## Install dependencies using uv

@@ -4,11 +4,14 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-import models  # noqa: F401 — registers all models with db.metadata
+from app.models import (  # noqa: F401 — registers all models with db.metadata
+    BpmModel,
+    User,
+)
 from config import Config
 
 # Import the Base so Alembic can see all model metadata for autogenerate.
-from extensions import db
+from extensions import Base as db
 
 # this is the Alembic Config object
 config = context.config

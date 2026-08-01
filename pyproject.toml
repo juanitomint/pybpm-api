@@ -14,6 +14,7 @@ dependencies = [
    "passlib[bcrypt]>=1.7.4",     # Secure password hashing for user/auth tasks
    "python-jose[cryptography]>=3.3.0", # JWT generation and validation
    "python-multipart>=0.0.32",
+   "aiosqlite>=0.22.1",
 ]
 
 [dependency-groups]

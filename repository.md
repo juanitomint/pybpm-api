@@ -31,10 +31,14 @@ This document describes how to implement the BPM Model Repository CRUD API by po
 - [x] Update existing conftest.py / test fixtures for repository tests
 
 ### 1. Data Layer
-- [ ] Create `pybpm/models/bpm_model.py` with `BpmModel` SQLAlchemy class (no `svg` column, `svg_path` property)
-- [ ] Create `pybpm/repository_schemas.py` with Pydantic request/response models:
-  - `ModelCreate`, `ModelUpdate`, `ModelDuplicateRequest`, `SaveAsRequest`, `FolderUpdate`
-  - `ImportResponse`, `ModelRead` (no svg field in read response)
+- [x] Create `app/models/base.py` with `Base(DeclarativeBase)` exposing `.metadata` for Alembic
+- [x] Create `app/models/bpm_model.py` with `BpmModel` — no `svg` column, `svg_path` property returns `static/svg/{idwf}.svg`
+- [x] Create `app/models/user.py` — `User` model matching legacy migration schema (`idu`, `nick`, `pass_hash`, etc.)
+- [x] Create `extensions.py` — shared sync engine (Alembic) + async engine (FastAPI) with aiosqlite support for SQLite URLs
+- [x] Wire `get_async_db()` FastAPI dependency in extensions
+- [x] Create `app/schemas/repository.py` with all Pydantic request/response models:
+  - **Request**: `ModelCreate`, `ModelUpdate`, `ModelDuplicateRequest`, `SaveAsRequest`, `FolderUpdate`, `ScriptRequest`, `SaveModelRequest`
+  - **Response**: `ModelRead` (no svg field), `CheckResponse`, `DumpResponse`, `ShapesResponse`, `CommentsResponse`, `SaveResponse`, `ModelCreateResponse`
 
 ### 2. Auth Dependency
 - [ ] Create FastAPI JWT bearer dependency (`get_current_user`) using `python-jose`

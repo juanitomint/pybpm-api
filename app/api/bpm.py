@@ -128,17 +128,32 @@ async def delete(
     return SaveResponse(ok=True, msg=f"deleted id: {idwf}")
 
 
-@router.get("/{idwf}", response_model=ModelRead)
+@router.get("/{idwf}", response_class=JSONResponse)
 async def load(
     idwf: str,
     user: User = Depends(get_current_user),
     service: ModelService = Depends(get_model_service),
 ):
+    """Load full model data. Falls back to template if `data` is empty."""
     result = await service.db.execute(select(BpmModel).where(BpmModel.idwf == idwf))
     model = result.scalar_one_or_none()
     if model is None:
         raise HTTPException(status_code=404, detail=f"model '{idwf}' not found")
-    return model
+
+    data = model.data or {
+        "resourceId": idwf,
+        "stencilset": {
+            "url": "../../jscript/bpm-dna2/stencilsets/bpmn2.0/bpmn2.0_2.json",
+            "namespace": "http://b3mn.org/stencilset/bpmn2.0#",
+        },
+        "stencil": {"id": "BPMNDiagram"},
+    }
+
+    headers = {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        "Pragma": "no-cache",
+    }
+    return JSONResponse(content=data, status_code=200, headers=headers)
 
 
 @router.get("/{idwf}/dump", response_model=DumpResponse)

@@ -22,6 +22,20 @@ def _build_database_url() -> str:
     return url
 
 
+def _async_database_url() -> str:
+    """Return the database URL for ``create_async_engine``.
+
+    Translates PostgreSQL URLs to use the async driver (asyncpg). The sync
+    engine keeps the plain ``postgresql://`` URL so Alembic uses psycopg2.
+    """
+    url = Config.SQLALCHEMY_DATABASE_URI
+    if url.startswith("sqlite:///"):
+        return url.replace("sqlite:///", "sqlite+aiosqlite://", 1)
+    if url.startswith("postgresql://") and "+asyncpg" not in url:
+        return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    return url
+
+
 # -- Synchronous engine/session (used by Alembic migrations) -- #
 
 _sync_url = _build_database_url()
@@ -35,7 +49,7 @@ sync_session_factory = sessionmaker(bind=_sync_engine, class_=Session)
 
 # -- Async engine/session (used by FastAPI async endpoints) -- #
 
-_async_url = _build_database_url()
+_async_url = _async_database_url()
 _async_engine = create_async_engine(
     _async_url,
     echo=Config.SQLALCHEMY_ECHO if hasattr(Config, "SQLALCHEMY_ECHO") else False,

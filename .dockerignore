@@ -4,4 +4,6 @@ __pycache__
 .git
 data/pgdata
 data/upload_data
+.tools
+tools/
 .MD

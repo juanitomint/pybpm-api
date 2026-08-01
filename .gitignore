@@ -134,3 +134,4 @@ dmypy.json
 data
 .ruff_cache/
 .zed/
+files/

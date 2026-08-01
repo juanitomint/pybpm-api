@@ -22,7 +22,9 @@ class ModelCreate(BaseModel):
 
     idwf: str = Field(..., description="Unique model identifier (primary key).")
     folder: str = Field(default="General", description="Folder to place the model in.")
-    name: str | None = Field(default=None, description='Display name; defaults to "New Model".')
+    name: str | None = Field(
+        default=None, description='Display name; defaults to "New Model".'
+    )
 
 
 class ModelUpdate(BaseModel):
@@ -31,7 +33,9 @@ class ModelUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: dict = Field(..., description="BPMN stencil data (JSON object).")
-    svg: str | None = Field(default=None, description="Raw SVG string to write to disk.")
+    svg: str | None = Field(
+        default=None, description="Raw SVG string to write to disk."
+    )
 
 
 class ModelDuplicateRequest(BaseModel):
@@ -39,7 +43,9 @@ class ModelDuplicateRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    new_idwf: str = Field(..., alias="newIdwf", description="The new unique identifier for the duplicate.")
+    new_idwf: str = Field(
+        ..., alias="newIdwf", description="The new unique identifier for the duplicate."
+    )
 
 
 class SaveAsRequest(BaseModel):
@@ -57,7 +63,12 @@ class FolderUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    folder: str = Field(..., min_length=1, max_length=255, description="New folder name (HTML tags stripped server-side).")
+    folder: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description="New folder name (HTML tags stripped server-side).",
+    )
 
 
 class ScriptRequest(BaseModel):
@@ -69,7 +80,9 @@ class ScriptRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    script: str | None = Field(default=None, description="Ignored — kept for legacy compat.")
+    script: str | None = Field(
+        default=None, description="Ignored — kept for legacy compat."
+    )
 
 
 class SaveModelRequest(BaseModel):

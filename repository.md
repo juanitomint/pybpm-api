@@ -18,6 +18,10 @@ This document describes how to implement the BPM Model Repository CRUD API by po
 | SVG storage | **File system only** at `pybpm/static/svg/{idwf}.svg`. The DB never stores SVG content — the path is reconstructed from `{idwf}` whenever an SVG endpoint is called. |
 | Project layout | Flat module style (matching existing pybpm): top-level `repository.py`, models at top level, no nested `app/` structure until explicitly reorganized |
 
+### Implementation Notes
+
+**Always run `make run` after finishing a step.** Before marking any step complete, start the dev server (`uvicorn main:app --reload --port 5000`) and confirm it boots without import errors, Pydantic schema failures, or OpenAPI generation crashes. If you change models, schemas, routers, or services — especially anything that touches `extensions.py`, `config.py`, or FastAPI dependencies — a full server restart is the only reliable way to catch wiring issues early (circular imports, missing drivers, unresolved forward references, dependency injection misconfiguration).
+
 ---
 
 ## Progress Tracker
@@ -41,11 +45,13 @@ This document describes how to implement the BPM Model Repository CRUD API by po
   - **Response**: `ModelRead` (no svg field), `CheckResponse`, `DumpResponse`, `ShapesResponse`, `CommentsResponse`, `SaveResponse`, `ModelCreateResponse`
 
 ### 2. Auth Dependency
-- [ ] Create FastAPI JWT bearer dependency (`get_current_user`) using `python-jose`
+- [x] Create FastAPI JWT bearer dependency (`get_current_user`) using `python-jose` — see `app/core/auth.py`
+- [x] Wire async engine to use asyncpg driver for Postgres URLs (see `extensions.py:_async_database_url`)
+- [x] Make `get_model_service()` depend on `get_async_db()` so FastAPI resolves the chain correctly
 
 ### 3. Core Endpoints (CRUD)
 - [ ] Step 1: PUT `/api/v1/models/{idwf}` — save/update model + write SVG to disk
-- [ ] Step 2: POST `/api/v1/models/{idwf}/duplicate` — clone to new idwf
+- [x] Step 2: POST `/api/v1/models/{idwf}/duplicate` — clone to new idwf
 - [ ] Step 3: POST `/api/v1/models/save-as` — save as new model with custom title
 - [ ] Step 4: POST `/api/v1/models` — create brand-new empty scaffold
 

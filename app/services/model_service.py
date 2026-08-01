@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import copy as _copy_module
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends
@@ -11,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.bpm_model import BpmModel
 from extensions import get_async_db
+
+SVG_DIR = Path(__file__).parent.parent.parent / "static" / "svg"
 
 
 class ModelService:
@@ -22,6 +26,50 @@ class ModelService:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    async def save(
+        self,
+        idwf: str,
+        data: dict[str, Any],
+        svg: str | None = None,
+    ) -> tuple[BpmModel, bool]:
+        """Save a model (upsert). Bumps version on update; writes SVG to disk.
+
+        Returns ``(model, was_created)`` — ``was_created`` is True for inserts,
+        False for updates. The caller maps this to 201/200.
+        """
+        now = datetime.now(UTC)
+        data["properties"] = data.get("properties") or {}
+        data["properties"]["modificationdate"] = now.strftime("%Y-%m-%dT%H:%M:%S")
+
+        if svg is not None:
+            SVG_DIR.mkdir(parents=True, exist_ok=True)
+            (SVG_DIR / f"{idwf}.svg").write_text(svg, encoding="utf-8")
+
+        stmt = select(BpmModel).where(BpmModel.idwf == idwf)
+        existing = await self.db.execute(stmt)
+        model = existing.scalar_one_or_none()
+
+        was_created = False
+        if model is None:
+            model = BpmModel(
+                idwf=idwf,
+                folder="General",
+                version=1,
+                data=data,
+                created_at=now,
+                updated_at=now,
+            )
+            self.db.add(model)
+            was_created = True
+        else:
+            model.data = data
+            model.version += 1
+            model.updated_at = now
+
+        await self.db.flush()
+        await self.db.commit()
+        return model, was_created
 
     async def duplicate(self, source_idwf: str, new_idwf: str) -> dict[str, Any]:
         """Clone a model to a new idwf (raw insert — no version bump)."""

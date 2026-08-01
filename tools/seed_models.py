@@ -11,8 +11,7 @@ import asyncio
 import json
 import pathlib
 import sys
-
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,7 +21,7 @@ FIXTURES_DIR = BASE / "files" / "images" / "model"
 
 
 async def seed(db: AsyncSession):
-    from app.models.bpm_model import BpmModel  # noqa: E402
+    from app.models.bpm_model import BpmModel
 
     paths = sorted(p for p in FIXTURES_DIR.glob("*.json"))
     print(f"[seed] {len(paths)} fixtures to load")
@@ -33,14 +32,12 @@ async def seed(db: AsyncSession):
         idwf = payload.get("resourceId") or path.stem.replace(" ", "_")
 
         try:
-            existing = await db.execute(
-                select(BpmModel).where(BpmModel.idwf == idwf)
-            )
+            existing = await db.execute(select(BpmModel).where(BpmModel.idwf == idwf))
             if existing.scalar_one_or_none() is not None:
                 print(f"  SKIP {path.name} -> idwf={idwf} (already exists)")
                 continue
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             model = BpmModel(
                 idwf=idwf,
                 folder="General",
@@ -58,10 +55,7 @@ async def seed(db: AsyncSession):
             failures.append((str(path.name), str(exc)))
 
     await db.commit()
-    print(
-        f"\n[seed] done. {successes}/{len(paths)} loaded, "
-        f"{len(failures)} failed"
-    )
+    print(f"\n[seed] done. {successes}/{len(paths)} loaded, {len(failures)} failed")
     if failures:
         for name, err in failures:
             print(f"  - {name}: {err}")
@@ -69,7 +63,7 @@ async def seed(db: AsyncSession):
 
 
 async def main():
-    from extensions import async_session_factory  # noqa: E402
+    from extensions import async_session_factory
 
     async with async_session_factory() as db:
         await seed(db)

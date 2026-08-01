@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
 
@@ -80,13 +81,23 @@ async def add(
     raise NotImplementedError("Step 4 — create scaffold not yet implemented")
 
 
-@router.put("/{idwf}")
+@router.put("/{idwf}", response_model=ModelRead)
 async def save(
     idwf: str,
     body: ModelUpdate,
     user: User = Depends(get_current_user),
+    service: ModelService = Depends(get_model_service),
 ):
-    raise NotImplementedError("Step 1 — save/update not yet implemented")
+    """Save or update a model. Bumps version on update; writes SVG to disk."""
+    # Strip legacy _id just in case the editor sends it along with data
+    body.data.pop("_id", None)
+
+    model, was_created = await service.save(idwf, body.data, svg=body.svg)
+    status = 201 if was_created else 200
+    return JSONResponse(
+        content=ModelRead.model_validate(model).model_dump(mode="json"),
+        status_code=status,
+    )
 
 
 @router.post("/save-as")

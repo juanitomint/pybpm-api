@@ -50,15 +50,15 @@ This document describes how to implement the BPM Model Repository CRUD API by po
 - [x] Make `get_model_service()` depend on `get_async_db()` so FastAPI resolves the chain correctly
 
 ### 3. Core Endpoints (CRUD)
-- [ ] Step 1: PUT `/api/v1/models/{idwf}` — save/update model + write SVG to disk
+- [x] Step 1: PUT `/api/v1/models/{idwf}` — save/update model + write SVG to disk
 - [x] Step 2: POST `/api/v1/models/{idwf}/duplicate` — clone to new idwf
 - [ ] Step 3: POST `/api/v1/models/save-as` — save as new model with custom title
 - [ ] Step 4: POST `/api/v1/models` — create brand-new empty scaffold
 
 ### 4. Read / Query Endpoints
-- [ ] Step 5: GET `/api/v1/models/check/{idwf}` — check existence (for editor validation)
-- [ ] Step 6: DELETE `/api/v1/models/{idwf}` — delete model by idwf
-- [ ] Step 7: GET `/api/v1/models/{idwf}` — load full model data (primary read, template fallback)
+- [x] Step 5: GET `/api/v1/models/check/{idwf}` — check existence (for editor validation)
+- [x] Step 6: DELETE `/api/v1/models/{idwf}` — delete model by idwf
+- [x] Step 7: GET `/api/v1/models/{idwf}` — load full model data (primary read, template fallback TBD)
 - [ ] Step 8: GET `/api/v1/models/{idwf}/dump` — debug dump with expand flag
 
 ### 5. Save Variant Endpoints
@@ -66,18 +66,18 @@ This document describes how to implement the BPM Model Repository CRUD API by po
 - [ ] Step 10: POST `/api/v1/models/{idwf}/save` — save data payload with current SVG from disk
 
 ### 6. SVG / Visual Endpoints
-- [ ] Step 11: GET `/api/v1/models/{idwf}/thumbnail` — stub (returns raw SVG, thumbnail gen deferred)
+- [x] Step 11: GET `/api/v1/models/{idwf}/thumbnail` — stub (returns raw SVG, thumbnail gen deferred)
 - [ ] Step 12: GET `/api/v1/models/{idwf}/svg` — return formatted SVG from file on disk
 
 ### 7. Shape / Comment Endpoints
-- [ ] Step 13: GET `/api/v1/models/{idwf}/shapes` — get all diagram shapes indexed by resourceId
-- [ ] Step 14: GET `/api/v1/models/{idwf}/comments/{resource_id}` — get shape documentation/comments
+- [x] Step 13: GET `/api/v1/models/{idwf}/shapes` — get all diagram shapes indexed by resourceId (stub)
+- [x] Step 14: GET `/api/v1/models/{idwf}/comments/{resource_id}` — get shape documentation/comments (stub)
 
 ### 8. Import / Bulk Operations
 - [ ] Step 15: POST `/api/v1/models/import` — upload + import `.zip` model archive (multipart)
 
 ### 9. Folder Management
-- [ ] Step 16: PATCH `/api/v1/models/{idwf}/folder` — move model into different folder (HTML tag sanitization)
+- [x] Step 16: PATCH `/api/v1/models/{idwf}/folder` — move model into different folder (HTML tag sanitization stub)
 
 ### 10. Tests
 - [ ] Write integration tests in `pybpm/tests/test_repository.py` covering all 16 endpoints (~50 test functions)

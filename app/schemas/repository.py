@@ -60,10 +60,11 @@ class SaveAsRequest(BaseModel):
 
 
 class FolderUpdate(BaseModel):
-    """PATCH `/api/v1/models/{idwf}/folder` — move a model into another folder."""
+    """POST `/api/v1/models/update_folder` — move a model into another folder."""
 
     model_config = ConfigDict(extra="forbid")
 
+    idwf: str = Field(..., description="The unique identifier of the model to move.")
     folder: str = Field(
         ...,
         min_length=1,
@@ -73,10 +74,11 @@ class FolderUpdate(BaseModel):
 
 
 class ScriptRequest(BaseModel):
-    """POST `/api/v1/models/save_script/{idwf}/{resource_id}` — re-save current model state.
+    """POST /api/v1/models/save_script/{idwf}/{resource_id}
 
-    Legacy accepts a `script` field but ignores it; this is effectively a no-op
-    save that bumps the version and updates modificationdate.
+    Re-save current model state. Legacy accepts a `script` field but ignores it;
+    this is effectively a no-op save that bumps the version and updates
+    modificationdate.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -147,9 +149,10 @@ class SaveResponse(BaseModel):
 
 
 class CheckResponse(BaseModel):
-    """GET `/api/v1/models/check/{idwf}` — availability check.
+    """GET /api/v1/models/check/{idwf} — availability check.
 
-    `ok=true` means the idwf is NOT taken (safe to use); `ok=false` means it already exists.
+    `ok=true` means the idwf is NOT taken (safe to use);
+    `ok=false` means it already exists.
     """
 
     ok: bool
@@ -192,7 +195,8 @@ class TokenItem(BaseModel):
 
 
 class TokensResponse(BaseModel):
-    """GET `/api/v1/models/tokens/{idwf}/{idcase}/{filter_status}` — process tokens for a case."""
+    """GET /api/v1/models/tokens/{idwf}/{idcase}/{filter_status} —
+    process tokens for a case."""
 
     idwf: str
     idcase: str

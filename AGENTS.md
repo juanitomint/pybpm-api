@@ -16,7 +16,7 @@ A high-performance **FastAPI** backend for the BPM suite. It utilizes **SQLAlche
 ## Architecture
 
 ```
-pybpm/
+pybpm-api/
 ├── main.py                 # FastAPI application entry point
 ├── config.py               # Pydantic Settings (loads from .env)
 ├── extensions.py           # Shared instances (e.g., SQLAlchemy engine/session)
@@ -25,33 +25,34 @@ pybpm/
 │   ├── api/                # FastAPI Routers (Endpoints)
 │   │   ├── __init__.py
 │   │   ├── auth.py         # Auth & Identity endpoints
-│   │   └── bpm.py          # BPM core logic endpoints
+│   │   └── bpm/            # BPM core logic (one controller per file)
+│   │       ├── __init__.py
+│   │       └── repository.py  # Model CRUD, mirrors Repository.php
 │   ├── models/             # SQLAlchemy ORM Models
 │   │   ├── __init__.py
 │   │   ├── base.py         # DeclarativeBase
-│   │   └── case.py         # Case entities
+│   │   ├── bpm_model.py    # BPMN model definitions
+│   │   └── user.py         # User accounts
 │   ├── schemas/            # Pydantic Models (Request/Response)
 │   │   ├── __init__.py
-│   │   ├── auth.py         # Auth schemas
-│   │   └── case.py         # Case schemas
+│   │   └── repository.py   # Model request/response schemas
 │   ├── services/           # Business Logic (Service Layer)
 │   │   ├── __init__.py
-│   │   ├── auth_service.py
-│   │   └── case_service.py
+│   │   └── model_service.py  # BPMN model business logic
 │   └── core/               # Security, Constants, Utilities
+│       └── auth.py         # JWT bearer dependency
 │
 ├── migrations/              # Alembic migration files
 │   ├── env.py
 │   └── versions/
 │
-├── tests/                  # Pytest suite
-│   ├── conftest.py         # Async test fixtures
-│   └── test_api.py         # API integration tests
-│
+├── conftest.py             # Root async test fixtures
 ├── alembic.ini             # Alembic configuration
 ├── pyproject.toml          # Project dependencies and tools
 └── .env                    # Environment variables (not committed)
 ```
+
+Note: `case.py`, `auth_service.py`, and `case_service.py` will be added when the Case Manager component is ported from legacy PHP. The BPM Engine, RBAC service, and Scheduler components are also pending migration from the legacy `dna2bpm/application/modules/bpm/` codebase.
 
 ## Development Workflow
 
@@ -127,10 +128,29 @@ uv run black app/
 Ruff enforces style rules; Black formats the code. Both must pass before considering work complete. Ruff and Black are configured in `pyproject.toml`.
 
 ## Git & Commits
-Use **Conventional Commits**:
-- `feat`: New feature
-- `fix`: Bug fix
-- `refactor`: Code change that neither fixes a bug nor adds a feature
-- `docs`: Documentation changes
-- `test`: Adding/fixing tests
+
+Use **Conventional Commits** with **Semantic Versioning**. All git operations run from within `pybpm-api/` — never in the parent workspace folder.
+
+A Conventional Commits validator at `.githooks/commit-msg` rejects non-conforming messages automatically.
+
+### Commit format
+```
+<type>(optional scope): <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
+
+### Examples
+- `feat(engine): add BPMN model loader for XML parsing`
+- `fix(rbac): resolve permission check on case deletion`
+- `chore: bump version to 1.0.0`
+
+### Versioning rules (SemVer)
+- **MAJOR** — incompatible API changes (`BREAKING CHANGE:` footer or `!` after type)
+- **MINOR** — new functionality added backwards-compatibly
+- **PATCH** — backward-compatible bug fixes
 ```

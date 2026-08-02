@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.auth import router as auth_router
-from app.api.bpm import router as bpm_router
+from app.api.bpm.repository import router as bpm_router
 
 SVG_DIR = "static/svg"
 

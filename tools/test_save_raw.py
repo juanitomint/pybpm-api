@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Post the raw Oryx save payload (from files/raw/testo.raw) to /api/v1/models/save.
+"""Post the raw Oryx save payload (from files/raw/testo.raw) to /bpm/repository/save/{idwf}.
 
 Usage:
-    uv run python tools/test_save_raw.py [--url http://localhost:5000]
+    uv run python tools/test_save_raw.py [--url http://localhost:5000] [--idwf my-model-id]
 
 The script:
   1. Reads ``files/raw/testo.raw`` and URL-decodes its form fields.
   2. Logs in via POST /api/v1/auth/token with env vars ADMIN_USER / ADMIN_PASS
      (defaults to admin/admin).
-  3. POSTs the decoded payload as urlencoded form data to /api/v1/models/save
+  3. PUTs the decoded payload as urlencoded form data to /bpm/repository/save/{idwf}
      with a Bearer token from step 2.
 """
 
@@ -43,7 +43,10 @@ def decode_raw_payload(path: Path) -> dict[str, str]:
         key, _, value = buf.partition("=")
         pairs.append((key, value))
 
-    return {urllib.parse.unquote_plus(k): urllib.parse.unquote_plus(v) for k, v in pairs}
+    decoded = {}
+    for k, v in pairs:
+        decoded[urllib.parse.unquote_plus(k)] = urllib.parse.unquote_plus(v)
+    return decoded
 
 
 async def login(url: str, username: str, password: str) -> str | None:
@@ -60,10 +63,20 @@ async def login(url: str, username: str, password: str) -> str | None:
 
 
 async def post_save(url: str, token: str, payload: dict[str, str]) -> httpx.Response:
-    """POST the decoded raw payload to /api/v1/models/save."""
+    """PUT the decoded raw payload to /bpm/repository/save/{idwf}."""
+    import json as _json
+
+    data_field = payload.get("data", "{}")
+    try:
+        data_obj = _json.loads(data_field) if isinstance(data_field, str) else data_field
+        idwf = data_obj.get("resourceId", "unknown")
+    except (ValueError, TypeError):
+        idwf = "unknown"
+
+    url_path = f"{url}/bpm/repository/save/{urllib.parse.quote_plus(idwf)}"
     async with httpx.AsyncClient() as client:
-        return await client.post(
-            f"{url}/api/v1/models/save",
+        return await client.put(
+            url_path,
             data=payload,
             headers={"Authorization": f"Bearer {token}"},
         )

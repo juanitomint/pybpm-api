@@ -50,7 +50,7 @@ async def seed(db: AsyncSession):
             await db.flush()
             print(f"  OK   {path.name} -> idwf={idwf}")
             successes += 1
-        except Exception as exc:  # noqa: BLE001 — surface every failure
+        except Exception as exc:
             print(f"  ERR  {path.name} -> idwf={idwf}: {exc}")
             failures.append((str(path.name), str(exc)))
 

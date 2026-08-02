@@ -11,7 +11,7 @@ from app.models import (  # noqa: F401 — registers all models with db.metadata
 from config import Config
 
 # Import the Base so Alembic can see all model metadata for autogenerate.
-from extensions import Base as db
+from extensions import Base
 
 # this is the Alembic Config object
 config = context.config
@@ -21,7 +21,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 logger = logging.getLogger("alembic.env")
-target_metadata = db.metadata
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:

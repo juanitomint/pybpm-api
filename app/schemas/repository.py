@@ -39,10 +39,11 @@ class ModelUpdate(BaseModel):
 
 
 class ModelDuplicateRequest(BaseModel):
-    """POST `/api/v1/models/{idwf}/duplicate` — clone to a new idwf."""
+    """POST `/api/v1/models/duplicate` — clone a model to a new idwf."""
 
     model_config = ConfigDict(extra="forbid")
 
+    idwf: str = Field(..., description="Source model identifier.")
     new_idwf: str = Field(
         ..., alias="newIdwf", description="The new unique identifier for the duplicate."
     )
@@ -72,7 +73,7 @@ class FolderUpdate(BaseModel):
 
 
 class ScriptRequest(BaseModel):
-    """POST `/api/v1/models/{idwf}/script` — re-save current model state.
+    """POST `/api/v1/models/save_script/{idwf}/{resource_id}` — re-save current model state.
 
     Legacy accepts a `script` field but ignores it; this is effectively a no-op
     save that bumps the version and updates modificationdate.
@@ -85,12 +86,31 @@ class ScriptRequest(BaseModel):
     )
 
 
+class ModelDeleteRequest(BaseModel):
+    """POST `/api/v1/models/delete` — delete a model by idwf."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idwf: str = Field(..., description="The unique identifier of the model to delete.")
+
+
 class SaveModelRequest(BaseModel):
-    """POST `/api/v1/models/{idwf}/save` — update data payload, keep existing SVG."""
+    """POST `/api/v1/models/{idwf}/save` — editor save payload.
+
+    The Oryx editor ships three fields with every save: ``data`` (BPMN JSON),
+    ``svg`` (graphical representation, written to disk verbatim), and ``title``
+    (display name, currently unused by the backend).
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     data: dict = Field(..., description="New BPMN stencil data to persist.")
+    svg: str | None = Field(
+        default=None, description="SVG representation written to disk."
+    )
+    title: str | None = Field(
+        default=None, description="Display title — currently unused."
+    )
 
 
 # -- Response Schemas ---------------------------------------------------------- #
@@ -157,3 +177,24 @@ class CommentsResponse(BaseModel):
 
     stencil_id: str = ""
     documentation: str = ""
+
+
+class TokenItem(BaseModel):
+    """A single token entry in the tokens response."""
+
+    resource_id: str
+    type: str
+    status: str
+    icon_status: str = ""
+    icon: str = ""
+    subtype: str | None = None
+    name: str = ""
+
+
+class TokensResponse(BaseModel):
+    """GET `/api/v1/models/tokens/{idwf}/{idcase}/{filter_status}` — process tokens for a case."""
+
+    idwf: str
+    idcase: str
+    count: int = 0
+    tokens: list[TokenItem] = Field(default_factory=list)

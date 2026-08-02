@@ -29,13 +29,12 @@ class Config:
     if ENVIRONMENT == "development":
         SQLALCHEMY_ECHO = as_bool(os.environ.get("SQL_DEBUG", "true"))
 
-
-
     SECRET_KEY = os.environ.get("SECRET_KEY", "fallback-secret-change-in-production")
     JWT_EXPIRATION_HOURS = int(os.environ.get("JWT_EXPIRATION_HOURS", "24"))
 
     ADMIN_GROUP_ID = int(os.environ.get("ADMIN_GROUP_ID", "1"))
     AUTODISCOVER_PATHS = as_bool(os.environ.get("AUTODISCOVER_PATHS", "false"))
+
 
 class DevelopmentConfig(Config):
     DEBUG = True

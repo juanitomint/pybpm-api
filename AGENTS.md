@@ -115,6 +115,17 @@ uv run pytest
    uv run uvicorn main:app --reload
    ```
 
+## Linting & Formatting
+
+After making any code changes, always run:
+
+```bash
+uv run ruff check --fix app/
+uv run black app/
+```
+
+Ruff enforces style rules; Black formats the code. Both must pass before considering work complete. Ruff and Black are configured in `pyproject.toml`.
+
 ## Git & Commits
 Use **Conventional Commits**:
 - `feat`: New feature

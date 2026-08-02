@@ -40,7 +40,7 @@ def validate_svg(svg: str) -> bool:
         return False
 
     stripped = svg.strip()
-    if not (stripped.startswith("<?xml") or stripped.startswith("<svg")):
+    if not (stripped.startswith(("<?xml", "<svg"))):
         return False
 
     import re

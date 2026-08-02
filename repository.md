@@ -16,11 +16,11 @@ This document describes how to implement the BPM Model Repository CRUD API by po
 | DB | PostgreSQL (or SQLite for dev/tests, per existing config.py pattern) |
 | File uploads | Multipart form data with `python-multipart` for zip upload/extract |
 | SVG storage | **File system only** at `pybpm/static/svg/{idwf}.svg`. The DB never stores SVG content — the path is reconstructed from `{idwf}` whenever an SVG endpoint is called. |
-| Project layout | Flat module style (matching existing pybpm): top-level `repository.py`, models at top level, no nested `app/` structure until explicitly reorganized |
+| Project layout | Nested `app/` package: routers at `app/api/bpm.py`, models under `app/models/`, schemas under `app/schemas/repository.py`, services under `app/services/model_service.py` |
 
 ### Implementation Notes
 
-**Always run `make run` after finishing a step.** Before marking any step complete, start the dev server (`uvicorn main:app --reload --port 5000`) and confirm it boots without import errors, Pydantic schema failures, or OpenAPI generation crashes. If you change models, schemas, routers, or services — especially anything that touches `extensions.py`, `config.py`, or FastAPI dependencies — a full server restart is the only reliable way to catch wiring issues early (circular imports, missing drivers, unresolved forward references, dependency injection misconfiguration).
+**Always lint and format after finishing a step.** Run `uv run ruff check --fix app/ && uv run black app/` before marking any step complete. Also start the dev server (`uv run uvicorn main:app --reload`) to confirm it boots without import errors, Pydantic schema failures, or OpenAPI generation crashes. If you change models, schemas, routers, or services — especially anything that touches `extensions.py`, `config.py`, or FastAPI dependencies — a full server restart is the only reliable way to catch wiring issues early (circular imports, missing drivers, unresolved forward references, dependency injection misconfiguration).
 
 ---
 
@@ -50,34 +50,37 @@ This document describes how to implement the BPM Model Repository CRUD API by po
 - [x] Make `get_model_service()` depend on `get_async_db()` so FastAPI resolves the chain correctly
 
 ### 3. Core Endpoints (CRUD)
-- [x] Step 1: PUT `/api/v1/models/{idwf}` — save/update model + write SVG to disk
-- [x] Step 2: POST `/api/v1/models/{idwf}/duplicate` — clone to new idwf
-- [ ] Step 3: POST `/api/v1/models/save-as` — save as new model with custom title
-- [ ] Step 4: POST `/api/v1/models` — create brand-new empty scaffold
+- [x] Step 1: PUT `/api/v1/models/save/{idwf}` — save/update model + write SVG to disk
+- [x] Step 2: POST `/api/v1/models/duplicate` — clone to new idwf
+- [x] Step 3: POST `/api/v1/models/save_as` — save as new model with custom title (derived from `body.title`)
+- [ ] Step 4: POST `/api/v1/models/add/{idwf}` — create brand-new empty scaffold
 
 ### 4. Read / Query Endpoints
-- [x] Step 5: GET `/api/v1/models/check/{idwf}` — check existence (for editor validation)
-- [x] Step 6: DELETE `/api/v1/models/{idwf}` — delete model by idwf
-- [x] Step 7: GET `/api/v1/models/{idwf}` — load full model data (primary read, template fallback TBD)
-- [ ] Step 8: GET `/api/v1/models/{idwf}/dump` — debug dump with expand flag
+- [x] Step 5: GET `/api/v1/models/check_model/{name}` — check existence (for editor validation)
+- [x] Step 6: DELETE `/api/v1/models/delete` — delete model by idwf (idwf from POST body)
+- [x] Step 7: GET `/api/v1/models/load/{idwf}` — load full model data (primary read, template fallback; `?mode=` and `?debug=` query params)
+- [ ] Step 8: GET `/api/v1/models/dump/{idwf}` — debug dump with expand flag (`?expand=` query param)
 
 ### 5. Save Variant Endpoints
-- [ ] Step 9: POST `/api/v1/models/{idwf}/script` — save script (re-save full model state)
-- [ ] Step 10: POST `/api/v1/models/{idwf}/save` — save data payload with current SVG from disk
+- [x] Step 9: POST `/api/v1/models/save_script/{idwf}/{resource_id}` — save script (no-op stub; legacy re-saves full model state)
+- [x] Step 10: POST `/api/v1/models/save_model/{idwf}` — save data payload with current SVG from disk
 
 ### 6. SVG / Visual Endpoints
-- [x] Step 11: GET `/api/v1/models/{idwf}/thumbnail` — stub (returns raw SVG, thumbnail gen deferred)
-- [ ] Step 12: GET `/api/v1/models/{idwf}/svg` — return formatted SVG from file on disk
+- [x] Step 11: GET `/api/v1/models/thumbnail/{idwf}/{width}/{height}` — stub (returns raw SVG, thumbnail gen deferred)
+- [ ] Step 12: GET `/api/v1/models/svg/{idwf}` — return formatted SVG from file on disk
 
 ### 7. Shape / Comment Endpoints
-- [x] Step 13: GET `/api/v1/models/{idwf}/shapes` — get all diagram shapes indexed by resourceId (stub)
-- [x] Step 14: GET `/api/v1/models/{idwf}/comments/{resource_id}` — get shape documentation/comments (stub)
+- [x] Step 13: GET `/api/v1/models/get_shapes/{idwf}/{debug}` — get all diagram shapes indexed by resourceId (stub; `?debug=` query param)
+- [x] Step 14: GET `/api/v1/models/get_comments/{idwf}/{resource_id}` — get shape documentation/comments (stub)
 
 ### 8. Import / Bulk Operations
 - [ ] Step 15: POST `/api/v1/models/import` — upload + import `.zip` model archive (multipart)
 
 ### 9. Folder Management
-- [x] Step 16: PATCH `/api/v1/models/{idwf}/folder` — move model into different folder (HTML tag sanitization stub)
+- [x] Step 16: GET `/api/v1/models/tokens/{idwf}/{idcase}/{filter_status}` — case token inspection (stub; moved from legacy Repository controller, will migrate to Case Manager router later)
+- [ ] POST `/api/v1/models/update_folder` — move model into different folder (HTML tag sanitization stub; idwf/folder from POST body)
+
+> **Note:** `tokens()` was in the legacy Repository controller but belongs conceptually to the Case Manager. It is listed here as step 16 since it lives in the same endpoint file. Will be moved when the Case Manager component is implemented.
 
 ### 10. Tests
 - [ ] Write integration tests in `pybpm/tests/test_repository.py` covering all 16 endpoints (~50 test functions)
@@ -100,35 +103,37 @@ From the initial Alembic migration (`2026_07_13_0031-380f18722a18_initial_schema
 
 ## Endpoint Mapping Table
 
-| # | PHP Method | HTTP Verb + Path (Legacy) | RESTful Equivalent (New) | Description |
-|---|-----------|--------------------------|-------------------------|-------------|
-| 1 | `save()` | POST `/repository/save` | **POST** `/api/v1/models/{idwf}` | Update model data + SVG (full save with version bump, modification date) |
-| 2 | `duplicate()` | POST `/repository/duplicate` | **POST** `/api/v1/models/{idwf}/duplicate` | Clone a model to a new idwf |
-| 3 | `save_as()` | POST `/repository/save_as` | **POST** `/api/v1/models/save-as` | Save as new model with custom title/idwf |
-| 4 | `add()` | POST `/repository/add` | **POST** `/api/v1/models` | Create a brand-new empty model scaffold |
-| 5 | `check_model()` | GET `/repository/check_model/{name}` | **GET** `/api/v1/models/check/{idwf}` | Check if a model id already exists (validator for editor) |
-| 6 | `delete()` | POST `/repository/delete` | **DELETE** `/api/v1/models/{idwf}` | Delete a model by idwf |
-| 7 | `load()` | GET `/repository/load/{model}/{idwf}` | **GET** `/api/v1/models/{idwf}` | Load full model data (JSON) for editor |
-| 8 | `edit()` | GET `/repository/edit/{model}/{idwf}` | *(removed — served by frontend SPA)* | Returns XHTML page, not an API endpoint. Frontend serves this directly. |
-| 9 | `dump()` | GET `/repository/dump/{model}/{idwf}` | **GET** `/api/v1/models/{idwf}/dump` | Debug dump of model with expand flag (all sub-processes resolved) |
-| 10 | `json_view()` | GET `/repository/json_view/{model}/{idwf}` | *(removed — frontend view)* | Renders a JS-powered JSON editor page. Not an API endpoint. |
-| 11 | `save_script()` | POST `/repository/save_script/{idwf}/{resourceId}` | **POST** `/api/v1/models/{idwf}/script` | Save script content on a specific shape/resourceId (full save) |
-| 12 | `save_model()` | POST `/repository/save_model/{idwf}` | **POST** `/api/v1/models/{idwf}/save` | Save model data payload with current SVG (alias of full save) |
-| 13 | `thumbnail()` | GET `/repository/thumbnail/{idwf}/{width}/{height}` | **GET** `/api/v1/models/{idwf}/thumbnail` | Return raw SVG for thumbnail rendering |
-| 14 | `svg()` | GET `/repository/svg/{model}/{idwf}` | **GET** `/api/v1/models/{idwf}/svg` | Return SVG content with XML headers |
-| 15 | `get_shapes()` | GET `/repository/get_shapes/{model}/{idwf}` | **GET** `/api/v1/models/{idwf}/shapes` | Get all diagram shapes indexed by resourceId (for editor interaction) |
-| 16 | `view()` | GET `/repository/view/{model}/{idwf}` | *(removed — frontend view)* | Renders the model viewer page. Not an API endpoint. |
-| 17 | `tokens()` | GET `/repository/tokens/{model}/{idwf}/{idcase}` | **GET** `/api/v1/cases/{idwf}/{case_id}/tokens` | Get process tokens for a case instance (moved to Case Manager scope) |
-| 18 | `get_comments()` | GET `/repository/get_comments/{model}/{idwf}/{resourceId}` | **GET** `/api/v1/models/{idwf}/comments/{resource_id}` | Get documentation/comments for a shape |
+All routes follow CodeIgniter convention: function name = first URL segment, parameters = subsequent segments. PHP `$model` parameter is implicit (always present in legacy routing) and omitted from new routes since it carries no data.
+
+| # | PHP Method | Legacy URL Pattern | New Route (FastAPI) | Notes |
+|---|-----------|-------------------|---------------------|-------|
+| 1 | `save()` | `/repository/save` | **PUT** `/api/v1/models/save/{idwf}` | idwf from path; data+svg in body. Legacy extracts `$idwf = $data->resourceId`. |
+| 2 | `duplicate()` | `/repository/duplicate` | **POST** `/api/v1/models/duplicate` | Both idwf + new_idwf in POST body. |
+| 3 | `save_as()` | `/repository/save_as` | **POST** `/api/v1/models/save_as` | title from POST; data+svg in body. |
+| 4 | `add($new_idwf=null)` | `/repository/add/{idwf}` | **POST** `/api/v1/models/add/{idwf}` | idwf optional in URL (legacy reads from POST if missing). Creates scaffold with defaults. |
+| 5 | `check_model($name)` | `/repository/check_model/{name}` | **GET** `/api/v1/models/check_model/{name}` | Returns `{ok: bool}` — true if NOT taken. |
+| 6 | `delete()` | `/repository/delete` | **DELETE** `/api/v1/models/delete` | idwf from POST body (no URL param). |
+| 7 | `load($model, $idwf, $mode='', $debug=false)` | `/repository/load/{idwf}/{mode}/{debug}` | **GET** `/api/v1/models/load/{idwf}` + `?mode=` + `?debug=` | Optional mode/debug as query params (FastAPI can't do optional trailing path segments). |
+| 8 | `edit()` | `/repository/edit/{model}/{idwf}` | *(removed — served by frontend SPA)* | Returns XHTML page, not an API endpoint. |
+| 9 | `dump($model, $idwf, $expand=false)` | `/repository/dump/{idwf}/{expand}` | **GET** `/api/v1/models/dump/{idwf}` + `?expand=` | Optional expand as query param. |
+| 10 | `json_view()` | `/repository/json_view/{model}/{idwf}` | *(removed — frontend view)* | Renders a JS-powered JSON editor page. Not an API endpoint. |
+| 11 | `save_script($idwf, $resourceId)` | `/repository/save_script/{idwf}/{resourceId}` | **POST** `/api/v1/models/save_script/{idwf}/{resource_id}` | Re-saves full model state (stub). |
+| 12 | `save_model($idwf)` | `/repository/save_model/{idwf}` | **POST** `/api/v1/models/save_model/{idwf}` | idwf from URL path; data+svg in body. |
+| 13 | `thumbnail($idwf, $width, $heigth)` | `/repository/thumbnail/{idwf}/{width}/{height}` | **GET** `/api/v1/models/thumbnail/{idwf}/{width}/{height}` | All three params as path segments. |
+| 14 | `svg($idwf)` | `/repository/svg/{model}/{idwf}` | **GET** `/api/v1/models/svg/{idwf}` | Returns SVG content with XML headers. |
+| 15 | `get_shapes($model, $idwf, $debug=false)` | `/repository/get_shapes/{idwf}/{debug}` | **GET** `/api/v1/models/get_shapes/{idwf}/{debug}` + `?debug=` | Optional debug as query param. |
+| 16 | `view()` | `/repository/view/{model}/{idwf}` | *(removed — frontend view)* | Renders the model viewer page. Not an API endpoint. |
+| 17 | `tokens($model, $idwf, $idcase, $filter_status="")` | `/repository/tokens/{idwf}/{idcase}/{filter_status}` | **GET** `/api/v1/models/tokens/{idwf}/{idcase}/{filter_status}` | Case token inspection (stub). |
+| 18 | `get_comments($model, $idwf, $resourceId)` | `/repository/get_comments/{idwf}/{resource_id}` | **GET** `/api/v1/models/get_comments/{idwf}/{resource_id}` | Shape documentation/comments. |
 | 19 | `upload()` | GET/POST `/repository/upload` | *(removed — UI form)* | Shows upload HTML form. Frontend handles file picking. |
-| 20 | `Import()` | POST `/repository/import` | **POST** `/api/v1/models/import` | Upload and import a `.zip` model archive (drop-in replacement) |
-| 21 | `import_test()` | GET `/repository/import_test` | *(removed — dev only)* | Dev-only batch import of test models. Not shipped to production. |
-| 22 | `update_folder()` | POST `/repository/update_folder` | **PATCH** `/api/v1/models/{idwf}/folder` | Move a model into a different folder |
+| 20 | `Import($model)` | `/repository/import` | **POST** `/api/v1/models/import` | Zip file upload + extract (stub). |
+| 21 | `import_test()` | GET `/repository/import_test` | *(removed — dev only)* | Dev-only batch import. Not shipped to production. |
+| 22 | `update_folder()` | `/repository/update_folder` | **POST** `/api/v1/models/update_folder` | idwf + folder from POST body (no URL params). |
 | 23 | `repair_stencil_path()` | GET (dev-only) | *(removed — one-time migration)* | Fixes broken stencilset URLs. Not an API endpoint. |
 
-### Summary: 15 actionable endpoints to implement
+### Summary: 17 actionable endpoints to implement
 
-The table above removes UI-only endpoints (`edit`, `json_view`, `view`, `upload`, `import_test`) and dev-migration endpoints (`repair_stencil_path`). The remaining **15 RESTful endpoints** are listed below with implementation steps.
+The table above removes UI-only endpoints (`edit`, `json_view`, `view`, `upload`, `import_test`) and dev-migration endpoints (`repair_stencil_path`). The remaining **17 RESTful endpoints** are listed below with implementation steps.
 
 ---
 
@@ -174,16 +179,18 @@ class BpmModel(db.Model):
 Define request/response schemas in `repository_schemas.py`:
 
 - `ModelCreate` — for POST `/api/v1/models` (add endpoint): folder, idwf, name
-- `ModelUpdate` — for POST/PUT with data + svg payload
-- `ModelDuplicateRequest` — `{ "idwf": str, "new_idwf": str }`
-- `SaveAsRequest` — `{ "title": str, "data": dict, "svg": str }`
+- `ModelUpdate` — for PUT with data + svg payload
+- `ModelDuplicateRequest` — `{ "new_idwf": str }` (alias `"newIdwf"`)
+- `SaveAsRequest` — `{ "title": str, "data": dict, "svg": str | None }`
 - `FolderUpdate` — `{ "folder": str }`
-- `ImportResponse` — `{ "ok": bool, "msg": str }`
+- `ScriptRequest` — `{ "script": str | None }` (ignored server-side)
+- `SaveModelRequest` — `{ "data": dict, "svg": str | None, "title": str | None }`
 - `ModelRead` — full model read response (idwf, folder, version, data, created_at, updated_at). **No `svg` field** — SVGs are served as separate file endpoints (`/svg/{idwf}`, `/thumbnail/{idwf}`).
+- `SaveResponse` — generic `{ "ok": bool, "msg": str }` used for most mutation responses.
 
 ---
 
-### Step 1: POST `/api/v1/models/{idwf}` — `save()` → RESTful save/update
+### Step 1: PUT `/api/v1/models/save/{idwf}` — `save()`
 
 **Legacy PHP:** `Repository::save()` at line 43–57
 ```php
@@ -194,7 +201,7 @@ $idwf = $data->resourceId;
 $this->bpm->save($idwf, $data, $svg);
 ```
 
-**New endpoint:** `PUT /api/v1/models/{idwf}` (or POST — the legacy uses POST but RESTful convention is PUT for full replacement)
+**New endpoint:** `PUT /api/v1/models/save/{idwf}` — CodeIgniter convention: function name `save` is the route segment, `{idwf}` from path
 - Body: `{ "data": <dict>, "svg": <string> }`
 - Sets `properties.modificationdate = now()` in data dict
 - Calls service method that upserts model, increments version, writes SVG to disk
@@ -216,7 +223,7 @@ $this->bpm->save($idwf, $data, $svg);
 
 ---
 
-### Step 2: POST `/api/v1/models/{idwf}/duplicate` — `duplicate()`
+### Step 2: POST `/api/v1/models/duplicate` — `duplicate()`
 
 **Legacy PHP:** lines 59–84
 ```php
@@ -226,8 +233,8 @@ if($exists) { error: already exists }
 else { load old, unset _id, set resourceId=newidwf, idwf=newidwf, save_raw }
 ```
 
-**New endpoint:** `POST /api/v1/models/{idwf}/duplicate`
-- Body: `{ "new_idwf": "<string>" }` (path param provides source idwf)
+**New endpoint:** `POST /api/v1/models/duplicate` — no URL params (both idwf + new_idwf in POST body)
+- Body: `{ "idwf": "<string>", "new_idwf": "<string>" }`
 - Returns: `{ "ok": bool, "msg": str }`
 
 **Service logic:**
@@ -246,7 +253,7 @@ else { load old, unset _id, set resourceId=newidwf, idwf=newidwf, save_raw }
 
 ---
 
-### Step 3: POST `/api/v1/models/save-as` — `save_as()`
+### Step 3: POST `/api/v1/models/save_as` — `save_as()`
 
 **Legacy PHP:** lines 86–102
 ```php
@@ -255,7 +262,7 @@ $data->resourceId = $idwf;
 if(model exists) error 404; else save($idwf, $data, $svg);
 ```
 
-**New endpoint:** `POST /api/v1/models/save-as`
+**New endpoint:** `POST /api/v1/models/save_as` — underscore matches CodeIgniter function name
 - Body: `{ "title": "<string>", "data": <dict>, "svg": <string> }`
 - Note: legacy uses POST form field `title` (not idwf) as the model identifier
 
@@ -272,7 +279,7 @@ if(model exists) error 404; else save($idwf, $data, $svg);
 
 ---
 
-### Step 4: POST `/api/v1/models` — `add()` (create scaffold)
+### Step 4: POST `/api/v1/models/add/{idwf}` — `add($new_idwf=null)` (create scaffold)
 
 **Legacy PHP:** lines 122–171
 ```php
@@ -282,8 +289,8 @@ $wf = { idwf, folder, version:0, svg:"", data: { stencilset, resourceId, propert
 save_raw($wf);
 ```
 
-**New endpoint:** `POST /api/v1/models` (no path param)
-- Body: `{ "idwf": "<string>", "folder?": "<string>", "name?": "<string>" }`
+**New endpoint:** `POST /api/v1/models/add/{idwf}` — CodeIgniter convention: `$new_idwf` becomes `{idwf}` path segment (optional; legacy also accepts it from POST body)
+- Body: `{ "folder?": "<string>", "name?": "<string>" }` — idwf comes from URL
 - Returns: `{ ok: bool, msg: str }` or full model on success
 
 **Service logic:**
@@ -310,7 +317,7 @@ save_raw($wf);
 
 ---
 
-### Step 5: GET `/api/v1/models/check/{idwf}` — `check_model()`
+### Step 5: GET `/api/v1/models/check_model/{name}` — `check_model($name)`
 
 **Legacy PHP:** lines 173–178
 ```php
@@ -318,7 +325,7 @@ $rs = $this->bpm->get_models(array('idwf' => $name));
 $result['ok'] = ($rs->count()) ? false : true;
 ```
 
-**New endpoint:** `GET /api/v1/models/check/{idwf}`
+**New endpoint:** `GET /api/v1/models/check_model/{name}` — function name preserved, `$name` becomes `{name}` path segment
 - Returns: `{ "ok": bool }` — `true` if NOT exists, `false` if model with that id already exists
 - Used by the editor's "save as" validation
 
@@ -332,7 +339,7 @@ $result['ok'] = ($rs->count()) ? false : true;
 
 ---
 
-### Step 6: DELETE `/api/v1/models/{idwf}` — `delete()`
+### Step 6: DELETE `/api/v1/models/delete` — `delete()`
 
 **Legacy PHP:** lines 180–188
 ```php
@@ -340,8 +347,9 @@ $idwf = $this->input->post('idwf');
 $result['ok'] = $this->bpm->delete($idwf);
 ```
 
-**New endpoint:** `DELETE /api/v1/models/{idwf}` (path param, matches RESTful convention)
-- Returns: `{ "ok": bool }` or 204 No Content on success
+**New endpoint:** `DELETE /api/v1/models/delete` — no URL params (legacy reads idwf from POST body)
+- Body: `{ "idwf": "<string>" }`
+- Returns: `{ "ok": bool, "msg": str }`
 
 **Service logic:**
 1. Delete row from `bpm_models WHERE idwf = :idwf`
@@ -354,7 +362,7 @@ $result['ok'] = $this->bpm->delete($idwf);
 
 ---
 
-### Step 7: GET `/api/v1/models/{idwf}` — `load()` (primary read endpoint)
+### Step 7: GET `/api/v1/models/load/{idwf}` — `load($model, $idwf, $mode='', $debug=false)` (primary read endpoint)
 
 **Legacy PHP:** lines 190–223
 ```php
@@ -365,8 +373,8 @@ $data = ($mywf['data']) ? $mywf['data'] : $template;
 // Returns JSON with Cache-Control: no-store headers
 ```
 
-**New endpoint:** `GET /api/v1/models/{idwf}` (note: same path as Step 4's POST, but different HTTP verb — FastAPI handles this)
-- Query param: `?debug=true` for verbose output (optional, not in RESTful spec)
+**New endpoint:** `GET /api/v1/models/load/{idwf}` — CodeIgniter convention: function name `load` is the route segment, `{idwf}` from path. Optional `$mode` and `$debug` passed as query params (FastAPI can't represent optional trailing path segments).
+- Query params: `?mode=` (optional), `?debug=` (bool) for verbose output
 - Returns: JSON model data (`data` sub-tree only, matching legacy behavior)
 - Headers: `Cache-Control: no-store, no-cache, must-revalidate`
 
@@ -384,7 +392,7 @@ $data = ($mywf['data']) ? $mywf['data'] : $template;
 
 ---
 
-### Step 8: GET `/api/v1/models/{idwf}/dump` — `dump()`
+### Step 8: GET `/api/v1/models/dump/{idwf}` — `dump($model, $idwf, $expand=false)`
 
 **Legacy PHP:** lines 236–251
 ```php
@@ -392,7 +400,7 @@ $mywf = $this->bpm->load($idwf, $expand); // expand=true by default for full tre
 // Returns { htmltitle, theme, base_url, idwf, data } as JSON
 ```
 
-**New endpoint:** `GET /api/v1/models/{idwf}/dump`
+**New endpoint:** `GET /api/v1/models/dump/{idwf}` — function name `dump` is route segment, `{idwf}` from path. `$expand` as query param.
 - Query param: `?expand=false` (default false) — when true, recursively resolve sub-processes
 
 **Service logic:**
@@ -406,7 +414,7 @@ $mywf = $this->bpm->load($idwf, $expand); // expand=true by default for full tre
 
 ---
 
-### Step 9: POST `/api/v1/models/{idwf}/script` — `save_script()`
+### Step 9: POST `/api/v1/models/save_script/{idwf}/{resource_id}` — `save_script($idwf, $resourceId)` *(stub)*
 
 **Legacy PHP:** lines 288–313
 ```php
@@ -416,22 +424,19 @@ $this->bpm->save($idwf, $wf, $mywf['svg']); // full save with current data+svg
 echo "Saved!";
 ```
 
-**New endpoint:** `POST /api/v1/models/{idwf}/script`
-- Body: `{ "script": "<string>" }` — the script content to set on a shape
-- Note: legacy actually just re-saves the existing model (does not modify data with new script inline). The `script` post field is ignored in practice; this is effectively a "save current state" call.
+**New endpoint:** `POST /api/v1/models/save_script/{idwf}/{resource_id}` — function name preserved as route segment
+- Body: `{ "script": "<string>" }` — the script content to set on a shape (ignored server-side)
+- Note: legacy actually just re-saves the existing model. The `script` field is ignored; this endpoint currently returns a no-op success response matching the stub pattern.
 
-**Service logic:**
-1. Load model by `{idwf}` — 404 if missing (or SVG file missing)
-2. Re-save using full save path (version bump, modificationdate)
-3. Return success message
+**Service logic:** Stub — returns `SaveResponse(ok=True, msg="script saved (no-op)")`. To implement fully: load model, re-save via full save path with version bump and modificationdate.
 
 **Tests:**
-- Save script on existing model → 200 with "Saved!" confirmation
-- Save script on non-existent model → 404
+- Save script on existing model → 200 with success message (stub)
+- Save script on non-existent model → stub returns success regardless of existence
 
 ---
 
-### Step 10: POST `/api/v1/models/{idwf}/save` — `save_model()`
+### Step 10: POST `/api/v1/models/save_model/{idwf}` — `save_model($idwf)`
 
 **Legacy PHP:** lines 314–333
 ```php
@@ -441,22 +446,22 @@ $this->bpm->save($idwf, $data, $mywf['svg']); // save with current SVG
 echo "Saved!";
 ```
 
-**New endpoint:** `POST /api/v1/models/{idwf}/save`
-- Body: `{ "data": <dict> }` — new data payload (SVG kept from existing file on disk)
+**New endpoint:** `POST /api/v1/models/save_model/{idwf}` — CodeIgniter convention: function name + `{idwf}` path segment
+- Body: `{ "data": <dict>, "svg": <string>, "title?": <string> }`
 
 **Service logic:**
-1. Load existing model and verify SVG file exists at `pybpm/static/svg/{idwf}.svg` — 404 if missing
-2. Full save with new `data`, keeping old SVG file unchanged
+1. Extract idwf from `body.data["resourceId"]` — 400 if missing
+2. Call full save (version bump, modificationdate) and write SVG to disk
 3. Return success message
 
 **Tests:**
 - Save updated data on existing model → version bumped, returns "Saved!"
-- Save on non-existent model → 404
+- Save with missing resourceId in body → 400
 - Save without auth → 401
 
 ---
 
-### Step 11: GET `/api/v1/models/{idwf}/thumbnail` — `thumbnail()` *(stub)*
+### Step 11: GET `/api/v1/models/thumbnail/{idwf}/{width}/{height}` — `thumbnail($idwf, $width, $heigth)` *(stub)*
 
 **Legacy PHP:** lines 334–345
 ```php
@@ -465,8 +470,7 @@ header("Content-type: image/svg+xml");
 echo $svg; // raw SVG, no wrapper tags added
 ```
 
-**New endpoint:** `GET /api/v1/models/{idwf}/thumbnail`
-- Query params (legacy passes via URL but ignored in code): `{width}`, `{height}` — for future thumbnail generation
+**New endpoint:** `GET /api/v1/models/thumbnail/{idwf}/{width}/{height}` — all three params as path segments (matches CodeIgniter convention)
 - Returns: **raw SVG content** with `Content-Type: image/svg+xml` header
 - **Implementation note**: Thumbnail generation (SVG → PNG) is deferred. This endpoint currently returns the raw SVG file from disk as a placeholder. When phantomjs/cairosvg support is added later, swap in proper thumbnail generation here.
 
@@ -477,7 +481,7 @@ echo $svg; // raw SVG, no wrapper tags added
 
 ---
 
-### Step 12: GET `/api/v1/models/{idwf}/svg` — `svg()`
+### Step 12: GET `/api/v1/models/svg/{idwf}` — `svg($idwf)`
 
 **Legacy PHP:** lines 347–361
 ```php
@@ -486,7 +490,7 @@ $data['svg'] = str_replace('>', ">\n", $mywf['svg']); // add newlines after >
 // Returns XML with <?xml version="1.0" encoding="utf-8"?> header
 ```
 
-**New endpoint:** `GET /api/v1/models/{idwf}/svg`
+**New endpoint:** `GET /api/v1/models/svg/{idwf}` — function name preserved as route segment
 - Returns: **formatted SVG string** from file on disk, with XML declaration header and `Content-Type: image/svg+xml`
 
 **Service logic:**
@@ -502,7 +506,7 @@ $data['svg'] = str_replace('>', ">\n", $mywf['svg']); // add newlines after >
 
 ---
 
-### Step 13: GET `/api/v1/models/{idwf}/shapes` — `get_shapes()`
+### Step 13: GET `/api/v1/models/get_shapes/{idwf}/{debug}` — `get_shapes($model, $idwf, $debug=false)`
 
 **Legacy PHP:** lines 363–380
 ```php
@@ -514,8 +518,8 @@ foreach ($shapes as $shape) {
 }
 ```
 
-**New endpoint:** `GET /api/v1/models/{idwf}/shapes`
-- Query param: `?debug=true` (optional, verbose output)
+**New endpoint:** `GET /api/v1/models/get_shapes/{idwf}/{debug}` — function name preserved, `{debug}` path segment (optional via query param fallback)
+- Query param: `?debug=` (bool, default false, verbose output)
 - Returns: `{ "idwf": "<string>", "shapes": { "<resource_id>": <shape_dict>, ... } }` — shapes indexed by resourceId
 
 **Service logic:**
@@ -530,7 +534,7 @@ foreach ($shapes as $shape) {
 
 ---
 
-### Step 14: GET `/api/v1/models/{idwf}/comments/{resource_id}` — `get_comments()`
+### Step 14: GET `/api/v1/models/get_comments/{idwf}/{resource_id}` — `get_comments($model, $idwf, $resourceId)`
 
 **Legacy PHP:** lines 492–505
 ```php
@@ -541,7 +545,7 @@ echo $shape->stencil->id . '<br/>';
 echo $shape->properties->documentation;
 ```
 
-**New endpoint:** `GET /api/v1/models/{idwf}/comments/{resource_id}`
+**New endpoint:** `GET /api/v1/models/get_comments/{idwf}/{resource_id}` — function name preserved as route segment
 - Returns: `{ "stencil_id": "<string>", "documentation": "<string>" }`
 
 **Service logic:**
@@ -556,7 +560,7 @@ echo $shape->properties->documentation;
 
 ---
 
-### Step 15: POST `/api/v1/models/import` — `Import()` (zip upload)
+### Step 15: POST `/api/v1/models/import` — `Import($model)` (zip upload)
 
 **Legacy PHP:** lines 513–603
 ```php
@@ -571,7 +575,7 @@ $data = json_decode(read_file($filename), false);
 if(model_exists) { save(); } else { save_raw(); }
 ```
 
-**New endpoint:** `POST /api/v1/models/import` (multipart form upload)
+**New endpoint:** `POST /api/v1/models/import` — no URL params (legacy `$model` param is implicit, not used in function body)
 - Form field: `file` — a `.zip` archive containing `{model_name}.json` and `{model_name}.svg`
 - Returns: `{ "ok": bool, "msg": "<string>" }`
 
@@ -593,7 +597,7 @@ if(model_exists) { save(); } else { save_raw(); }
 
 ---
 
-### Step 16: PATCH `/api/v1/models/{idwf}/folder` — `update_folder()`
+### Step 16: POST `/api/v1/models/update_folder` — `update_folder()`
 
 **Legacy PHP:** lines 622–637
 ```php
@@ -602,8 +606,8 @@ $folder = strip_tags_content($this->input->post('folder'));
 $this->bpm->update_folder($idwf, $folder);
 ```
 
-**New endpoint:** `PATCH /api/v1/models/{idwf}/folder`
-- Body: `{ "folder": "<string>" }` (strip HTML tags client-side or server-side)
+**New endpoint:** `POST /api/v1/models/update_folder` — no URL params (legacy reads idwf + folder from POST body)
+- Body: `{ "idwf": "<string>", "folder": "<string>" }` (strip HTML tags client-side or server-side)
 - Returns: `{ ok: bool, msg: str }` or updated model
 
 **Service logic:**
@@ -650,20 +654,24 @@ Apply `Depends(get_current_user)` to all repository endpoints. The legacy PHP do
 
 ## File: Directory Structure
 
-Create these files under pybpm/:
+Key files for the repository endpoints:
 
 ```
 pybpm/
 ├── static/
 │   └── svg/               # SVG files live here: {idwf}.svg (auto-created at startup)
-├── models/
-│   ├── __init__.py        # re-exports all models for migrations
-│   └── bpm_model.py       # BpmModel SQLAlchemy class (new, with svg_path property)
-├── repository.py          # FastAPI router with all 15+ endpoints (NEW)
-├── repository_schemas.py  # Pydantic request/response schemas (NEW)
-└── tests/
-    ├── conftest.py        # existing async test fixtures
-    └── test_repository.py # integration tests for all endpoints (NEW)
+├── app/
+│   ├── api/
+│   │   └── bpm.py         # FastAPI router with all 15+ repository endpoints
+│   ├── models/
+│   │   └── bpm_model.py   # BpmModel SQLAlchemy class (with svg_path property)
+│   ├── schemas/
+│   │   └── repository.py  # Pydantic request/response schemas
+│   └── services/
+│       └── model_service.py  # Business logic for model CRUD
+├── tests/
+│   ├── conftest.py        # existing async test fixtures
+│   └── test_repository.py # integration tests for all endpoints (NEW)
 ```
 
 **Startup hook**: On FastAPI app startup, create `pybpm/static/svg/` if it does not exist:
@@ -690,7 +698,7 @@ Each endpoint gets these categories of tests:
 | **Business logic** | Duplicate idwf → 409; non-existent model → 404; version bumping works correctly |
 | **Edge cases** | Empty data dict uses template fallback; HTML in folder gets sanitized; URL-encoded idwf is decoded; SVG file missing on disk → 404 |
 
-Target: **~50 test functions total** across the 16 endpoints (average ~3 per endpoint).
+Target: **~55 test functions total** across the 17 endpoints (average ~3 per endpoint).
 
 Run tests with: `uv run pytest`
 
@@ -712,3 +720,114 @@ cd pybpm && uv run alembic revision -m "Drop svg column from bpm_models (SVGs st
 ```
 
 If the JSONB column needs a type adjustment (SQLite uses TEXT vs PostgreSQL uses JSONB), ensure SQLAlchemy's `db.JSON` maps correctly to both dialects.
+
+---
+
+## Running & Troubleshooting
+
+### Start the Dev Server
+
+```bash
+# From pybpm/ directory:
+uv sync                                    # install dependencies
+docker compose up -d db                    # start PostgreSQL container
+uv run uvicorn main:app --reload           # hot-reload dev server on http://localhost:8000
+```
+
+Verify OpenAPI docs at `http://localhost:8000/docs` — all 17 endpoints should appear under the **models** tag.
+
+### Common Errors & Fixes
+
+#### 1. `ModuleNotFoundError: No module named 'app'`
+**Cause:** Running uvicorn from wrong directory or missing `pybpm/` in Python path.  
+**Fix:** Always run from inside `pybpm/`:
+```bash
+cd pybpm && uv run uvicorn main:app --reload
+```
+
+#### 2. `ImportError: cannot import name 'X' from 'app.api.bpm'`
+**Cause:** Circular imports between routers, models, and services.  
+**Fix:** 
+- Keep models in `app/models/`, schemas in `app/schemas/`, services in `app/services/`, routers in `app/api/`.
+- Routers should only import from services (not other routers).
+- Services import models + schemas.
+- If you hit a circular import, move the shared type to `app/types.py` or use string annotations (`from __future__ import annotations`).
+
+#### 3. `sqlalchemy.exc.OperationalError: could not connect to server`
+**Cause:** PostgreSQL container not running or wrong credentials in `.env`.  
+**Fix:**
+```bash
+docker compose up -d db                    # ensure DB is up
+uv run alembic upgrade head                # apply pending migrations
+```
+
+#### 4. `pydantic.error_wrappers.ValidationError: X validation error`
+**Cause:** Request body doesn't match the Pydantic schema (wrong field names, missing required fields).  
+**Fix:** Check the request against the schema in `app/schemas/repository.py`. The OpenAPI docs at `/docs` show exact field requirements. Common issues:
+- Using `newIdwf` instead of `new_idwf` for `ModelDuplicateRequest` (alias defined in schema)
+- Sending `svg` as base64 string when the endpoint expects raw SVG text
+
+#### 5. Route conflicts — `HTTPException: Multiple handlers match path`
+**Cause:** Two routes match the same URL pattern. Common culprits:
+- Static route `/save` vs dynamic `/{idwf}` for POST requests
+- Missing function name prefix (e.g., `GET /{idwf}` instead of `GET /load/{idwf}`)
+
+**Fix:** Every route must include the function name as the first segment:
+```python
+# WRONG — too generic, conflicts with other routes
+@router.get("/{idwf}")
+
+# CORRECT — matches CodeIgniter convention
+@router.get("/load/{idwf}")
+```
+
+#### 6. `AttributeError: 'BpmModel' object has no attribute 'svg'`
+**Cause:** Legacy code expected an `svg` column on the model, but it was dropped (SVGs now live in `static/svg/`).  
+**Fix:** Use `model.svg_path` property instead of `model.svg`. The property reconstructs the path from `{idwf}.svg`.
+
+#### 7. SVG file not found — `404 Not Found` on `/svg/{idwf}`
+**Cause:** SVG file doesn't exist at `pybpm/static/svg/{idwf}.svg`.  
+**Fix:** Ensure the SVG was written during save:
+```python
+# In service.save(): 
+svg_dir = Path(__file__).parent.parent / "static" / "svg"
+svg_dir.mkdir(parents=True, exist_ok=True)
+(svg_dir / f"{idwf}.svg").write_text(svg_content, encoding="utf-8")
+```
+
+#### 8. Alembic migration fails — `multiple primary keys` or column mismatch
+**Cause:** Schema drift between SQLAlchemy models and DB state.  
+**Fix:**
+```bash
+cd pybpm && uv run alembic downgrade base    # reset (dev only!)
+uv run alembic upgrade head                   # re-apply from scratch
+```
+
+### Testing
+
+```bash
+# Run all tests:
+uv run pytest
+
+# Run just repository tests:
+uv run pytest tests/test_repository.py -v
+
+# Run with coverage:
+uv run pytest --cov=app.api --cov=app.services tests/
+
+# Single test:
+uv run pytest tests/test_repository.py::test_save_existing_model -v
+```
+
+### Debugging Tips
+
+1. **Check route registration:** `http://localhost:8000/openapi.json | jq '.paths | keys'` — all 17 routes should appear.
+2. **Test a single endpoint with curl:**
+   ```bash
+   curl -X PUT http://localhost:8000/api/v1/models/save/test_model \
+     -H "Authorization: Bearer <token>" \
+     -H "Content-Type: application/json" \
+     -d '{"data": {"resourceId": "test_model"}, "svg": "<svg/>"}'
+   ```
+3. **Verify DB state:** `docker compose exec db psql -U bpmuser -d bpddb -c "SELECT idwf, version FROM bpm_models;"`
+4. **Check SVG file:** `ls -la pybpm/static/svg/`

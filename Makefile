@@ -51,13 +51,17 @@ clean: ## Clean up local environment and caches
 compose-up: ## Start Postgres + app (detached, removes orphaned containers from prior runs)
 	docker compose --env-file .env up -d --remove-orphans
 
-.PHONY: compose-stop
-compose-stop: ## Stop running containers but keep them for restart
-	docker compose stop
-
 .PHONY: compose-down
 compose-down: ## Stop and remove containers, networks, and orphaned resources
 	docker compose down --remove-orphans
+
+.PHONY: compose-run
+compose-run: ## Run app interactively via docker-compose (foreground, for development)
+	docker compose run --rm --service-ports app
+
+.PHONY: compose-stop
+compose-stop: ## Stop running containers but keep them for restart
+	docker compose stop
 
 .PHONY: docker-build
 docker-build: ## Build docker image using latest as cache
@@ -72,16 +76,7 @@ docker-push: ## Push docker image to remote ${IMAGE_REPOSITORY}
 
 .PHONY: docker-test
 docker-test: ## Test using docker image with .env variables
-	docker run -it --rm -v \${CURRENT_DIR}:/workspace --env-file .env --net=host ${IMAGE_REPOSITORY}:latest bash
-
-.PHONY: printvars
-printvars: ## Prints make variables
-	$(foreach V, $(sort $(.VARIABLES)), \
-	$(if $(filter-out environment% default automatic, $(origin $V)),$(warning $V=$($V) ($(value $V)))) \
-	)
-
-
-
+	docker run -it --rm -v ${CURRENT_DIR}:/workspace --env-file .env --net=host ${IMAGE_REPOSITORY}:latest bash
 
 .PHONY: printvars
 printvars: ## Prints make variables

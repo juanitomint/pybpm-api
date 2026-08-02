@@ -10,6 +10,6 @@ fi
 echo "Running database migrations..."
 uv run alembic upgrade head
 
-# Start the application (assuming it's a FastAPI app now, or similar)
+# Start the application
 echo "Starting the application..."
-uv run uvicorn app:create_app --host 0.0.0.0 --port 5000 --reload
+exec uv run uvicorn main:app --host 0.0.0.0 --port 5000 --reload --reload-dir /app

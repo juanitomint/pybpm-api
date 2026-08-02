@@ -10,9 +10,9 @@ from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.user import User
 from config import Config
 from extensions import get_async_db
-from app.models.user import User
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -20,10 +20,8 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
 
 
 def _create_token(user_id: int) -> str:
-    expire = dt.datetime.now(dt.timezone.utc) + dt.timedelta(
-        hours=Config.JWT_EXPIRATION_HOURS
-    )
-    payload = {"sub": str(user_id), "exp": expire, "iat": dt.datetime.now(dt.timezone.utc)}
+    expire = dt.datetime.now(dt.UTC) + dt.timedelta(hours=Config.JWT_EXPIRATION_HOURS)
+    payload = {"sub": str(user_id), "exp": expire, "iat": dt.datetime.now(dt.UTC)}
     return jwt.encode(payload, Config.SECRET_KEY, algorithm="HS256")
 
 

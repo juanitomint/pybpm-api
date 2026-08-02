@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import copy as _copy_module
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import cast
+
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from fastapi.responses import JSONResponse
+from sqlalchemy import CursorResult, select
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import select
 
 from app.core.auth import get_current_user
 from app.models.bpm_model import BpmModel
@@ -16,6 +21,7 @@ from app.schemas.repository import (
     DumpResponse,
     FolderUpdate,
     ModelCreate,
+    ModelDeleteRequest,
     ModelDuplicateRequest,
     ModelRead,
     ModelUpdate,
@@ -24,6 +30,7 @@ from app.schemas.repository import (
     SaveResponse,
     ScriptRequest,
     ShapesResponse,
+    TokensResponse,
 )
 from app.services.model_service import ModelService, get_model_service
 
@@ -34,12 +41,11 @@ router = APIRouter(prefix="/api/v1/models", tags=["models"])
 
 
 @router.post(
-    "/{idwf}/duplicate",
+    "/duplicate",
     response_model=SaveResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def duplicate(
-    idwf: str,
     body: ModelDuplicateRequest,
     user: User = Depends(get_current_user),
     service: ModelService = Depends(get_model_service),
@@ -48,8 +54,9 @@ async def duplicate(
 
     Returns 201 on success, 409 if the target idwf is already taken.
     Source-not-found returns 404 via FastAPI's default exception handler.
+    Both ``idwf`` and ``new_idwf`` come from the request body.
     """
-    result = await service.duplicate(idwf, body.new_idwf)
+    result = await service.duplicate(body.idwf, body.new_idwf)
 
     if not result["ok"]:
         raise _conflict_or_not_found(result["msg"])
@@ -71,17 +78,18 @@ def _conflict_or_not_found(msg: str):  # type: ignore[misc]
 
 
 @router.post(
-    "/",
+    "/add/{idwf}",
     status_code=status.HTTP_201_CREATED,
 )
 async def add(
-    body: ModelCreate,
+    idwf: str,
+    body: ModelCreate | None = None,
     user: User = Depends(get_current_user),
 ):
     raise NotImplementedError("Step 4 — create scaffold not yet implemented")
 
 
-@router.put("/{idwf}", response_model=ModelRead)
+@router.put("/save/{idwf}", response_model=ModelRead)
 async def save(
     idwf: str,
     body: ModelUpdate,
@@ -100,43 +108,83 @@ async def save(
     )
 
 
-@router.post("/save-as")
+@router.post("/save_as", response_model=SaveResponse)
 async def save_as(
     body: SaveAsRequest,
     user: User = Depends(get_current_user),
+    service: ModelService = Depends(get_model_service),
 ):
-    raise NotImplementedError("Step 3 — save-as not yet implemented")
+    """Save a copy with a custom title/idwf (no version bump).
+
+    ``title`` is the new model identifier — legacy PHP reads it from the POST
+    form field ``title``, not as a path parameter.
+    """
+    idwf = body.title
+    data = _copy_module.deepcopy(body.data)
+    data.pop("_id", None)
+    data["resourceId"] = idwf
+
+    if await service.model_exists(idwf):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"model '{idwf}' already exists",
+        )
+
+    now = datetime.now(UTC)
+    data.setdefault("properties", {})["modificationdate"] = now.strftime(
+        "%Y-%m-%dT%H:%M:%S"
+    )
+
+    if body.svg:
+        svg_dir = Path(__file__).parent.parent.parent / "static" / "svg"
+        svg_dir.mkdir(parents=True, exist_ok=True)
+        (svg_dir / f"{idwf}.svg").write_text(body.svg, encoding="utf-8")
+
+    model = BpmModel(
+        idwf=idwf,
+        folder="General",
+        version=0,
+        data=data,
+        created_at=now,
+        updated_at=now,
+    )
+    service.db.add(model)
+    await service.db.commit()
+
+    return SaveResponse(ok=True, msg=f"saved as id: {idwf}")
 
 
-@router.get("/check/{idwf}", response_model=CheckResponse)
-async def check_model(idwf: str, service: ModelService = Depends(get_model_service)):
-    exists = await service.model_exists(idwf)
+@router.get("/check_model/{name}", response_model=CheckResponse)
+async def check_model(name: str, service: ModelService = Depends(get_model_service)):
+    exists = await service.model_exists(name)
     return SaveResponse(ok=not exists, msg="" if not exists else "idwf already taken")
 
 
-@router.delete("/{idwf}", response_model=SaveResponse)
+@router.delete("/delete", response_model=SaveResponse)
 async def delete(
-    idwf: str,
+    body: ModelDeleteRequest,
     user: User = Depends(get_current_user),
     service: ModelService = Depends(get_model_service),
 ):
-    stmt = sa_delete(BpmModel).where(BpmModel.idwf == idwf)
-    result = await service.db.execute(stmt)
+    stmt = sa_delete(BpmModel).where(BpmModel.idwf == body.idwf)
+    result = cast(CursorResult, await service.db.execute(stmt))
     if result.rowcount == 0:
-        return SaveResponse(ok=False, msg=f"model '{idwf}' not found")
+        return SaveResponse(ok=False, msg=f"model '{body.idwf}' not found")
     await service.db.commit()
-    return SaveResponse(ok=True, msg=f"deleted id: {idwf}")
+    return SaveResponse(ok=True, msg=f"deleted id: {body.idwf}")
 
 
-@router.get("/{idwf}", response_class=JSONResponse)
+@router.get("/load/{idwf}", response_class=JSONResponse)
 async def load(
     idwf: str,
+    mode: str | None = Query(None, description="Load mode (e.g., 'debug')"),
+    debug: bool = Query(False, description="Verbose debug output"),
     user: User = Depends(get_current_user),
     service: ModelService = Depends(get_model_service),
 ):
     """Load full model data. Falls back to template if `data` is empty."""
     result = await service.db.execute(select(BpmModel).where(BpmModel.idwf == idwf))
-    model = result.scalar_one_or_none()
+    model: BpmModel | None = result.scalar_one_or_none()
     if model is None:
         raise HTTPException(status_code=404, detail=f"model '{idwf}' not found")
 
@@ -156,53 +204,85 @@ async def load(
     return JSONResponse(content=data, status_code=200, headers=headers)
 
 
-@router.get("/{idwf}/dump", response_model=DumpResponse)
+@router.get("/dump/{idwf}", response_model=DumpResponse)
 async def dump(
     idwf: str,
+    expand: bool = Query(False, description="Recursively resolve sub-processes"),
     user: User = Depends(get_current_user),
 ):
     raise NotImplementedError("Step 8 — dump not yet implemented")
 
 
-@router.post("/{idwf}/script", response_model=SaveResponse)
+@router.post("/save_script/{idwf}/{resource_id}", response_model=SaveResponse)
 async def save_script(
     idwf: str,
+    resource_id: str,
     body: ScriptRequest,
     user: User = Depends(get_current_user),
 ):
     return SaveResponse(ok=True, msg="script saved (no-op)")
 
 
-@router.post("/{idwf}/save", response_model=SaveResponse)
+@router.post("/save_model/{idwf}", response_model=SaveResponse)
 async def save_model(
     idwf: str,
     body: SaveModelRequest,
     user: User = Depends(get_current_user),
+    service: ModelService = Depends(get_model_service),
 ):
-    raise NotImplementedError("Step 10 — save data payload not yet implemented")
+    """Persist the editor's data + svg payload.
+
+    The Oryx "save" POST ships three fields (data, svg, title). ``title`` is
+    accepted but ignored; ``idwf`` comes from the URL path segment — matching
+    legacy PHP where ``$this->input->post('idwf')`` was the source of truth.
+    """
+    model, _mf, _zp = await service.save_model(idwf, body.data, svg=body.svg)
+    return SaveResponse(ok=True, msg=f"saved id: {model.idwf}")
 
 
-@router.get("/{idwf}/thumbnail")
-async def thumbnail(idwf: str):
+@router.get("/thumbnail/{idwf}/{width}/{height}")
+async def thumbnail(
+    idwf: str,
+    width: int,
+    height: int,
+):
     return {
         "msg": "thumbnail generation deferred",
         "svg_path": f"static/svg/{idwf}.svg",
     }
 
 
-@router.get("/{idwf}/svg")
+@router.get("/svg/{idwf}")
 async def svg(idwf: str, service: ModelService = Depends(get_model_service)):
     raise NotImplementedError("Step 12 — SVG file serving not yet implemented")
 
 
-@router.get("/{idwf}/shapes", response_model=ShapesResponse)
-async def get_shapes(idwf: str, user: User = Depends(get_current_user)):
+@router.get("/get_shapes/{idwf}", response_model=ShapesResponse)
+async def get_shapes(
+    idwf: str,
+    debug: bool = Query(False, description="Verbose debug output"),
+    user: User = Depends(get_current_user),
+):
     return ShapesResponse(idwf=idwf, shapes={})
 
 
-@router.get("/{idwf}/comments/{resource_id}", response_model=CommentsResponse)
+@router.get("/get_comments/{idwf}/{resource_id}", response_model=CommentsResponse)
 async def get_comments(idwf: str, resource_id: str):
     return CommentsResponse(stencil_id="", documentation="")
+
+
+@router.get("/tokens/{idwf}/{idcase}/{filter_status}", response_model=TokensResponse)
+async def tokens(
+    idwf: str,
+    idcase: str,
+    filter_status: str = "",
+):
+    """GET `/api/v1/models/tokens/{idwf}/{idcase}/{filter_status}` — case token inspection (stub).
+
+    Legacy PHP loads model + case history and walks tokens to build icon/status info.
+    Stub returns an empty token list until the engine is wired up.
+    """
+    return TokensResponse(idwf=idwf, idcase=idcase, count=0, tokens=[])
 
 
 @router.post("/import")
@@ -210,8 +290,9 @@ async def import_zip(user: User = Depends(get_current_user)):
     raise NotImplementedError("Step 15 — zip import not yet implemented")
 
 
-@router.patch("/{idwf}/folder", response_model=SaveResponse)
+@router.post("/update_folder", response_model=SaveResponse)
 async def update_folder(
-    idwf: str, body: FolderUpdate, user: User = Depends(get_current_user)
+    body: FolderUpdate,
+    user: User = Depends(get_current_user),
 ):
     return SaveResponse(ok=True, msg=f"moved to folder '{body.folder}'")

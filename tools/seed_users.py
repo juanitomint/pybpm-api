@@ -26,7 +26,9 @@ async def seed(db: AsyncSession):
     existing = result.scalar_one_or_none()
 
     if existing is not None:
-        print(f"[seed] User '{admin_nick}' already exists (id={existing.idu}), skipping")
+        print(
+            f"[seed] User '{admin_nick}' already exists (id={existing.idu}), skipping"
+        )
         return
 
     user = User(

@@ -38,15 +38,11 @@ def _patch_openapi():
             if not op:
                 continue
             security = op.get("security") or []
-            has_oauth = any(
-                s.get("OAuth2PasswordBearer") is not None for s in security
-            )
+            has_oauth = any(s.get("OAuth2PasswordBearer") is not None for s in security)
             if not has_oauth:
                 op["security"] = [{"OAuth2PasswordBearer": []}]
     app.openapi = lambda: schema
 
-
-_patch_openapi()
 
 ensure_svg_dir()
 
@@ -65,6 +61,8 @@ if os.path.isdir("static"):
 
 app.include_router(auth_router)
 app.include_router(bpm_router)
+
+_patch_openapi()
 
 
 @app.get("/")

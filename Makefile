@@ -1,4 +1,4 @@
-IMAGE_REPOSITORY  ?= juanitomint/pybpmrepository
+IMAGE_REPOSITORY  ?= juanitomint/pybpm-api
 CURRENT_DIR = $(shell pwd)
 GIT_LAST_TAG=$(shell git tag --sort=committerdate|tail -n 1)
 GIT_COMMIT=$(shell git rev-parse --short HEAD)
@@ -9,15 +9,15 @@ deps:  ## Install dependencies using uv
 
 .PHONY: run
 run: ## Run the FastAPI development server locally
-	uv run uvicorn main:app --reload --port 5000
+	.venv/bin/python -m uvicorn main:app --reload --port 5000
 
 .PHONY: migrate
 migrate: ## Run database migrations
-	uv run alembic upgrade head
+	.venv/bin/python -m alembic upgrade head
 
 .PHONY: test
 test: ## Run all tests
-	uv run pytest
+	.venv/bin/python -m pytest
 
 .PHONY: lint
 lint: ## Show code lints using ruff

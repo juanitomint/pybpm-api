@@ -34,6 +34,7 @@ from app.schemas.repository import (
     ModelDuplicateRequest,
     ModelRead,
     ModelUpdate,
+    OutputFormat,
     SaveAsRequest,
     SaveModelRequest,
     SaveResponse,
@@ -686,6 +687,113 @@ async def update_folder(
     return SaveResponse(ok=True, msg=f"moved to folder '{clean_folder}'")
 
 
+# -- Helpers: tree building (ported from legacy Admin.php) ------------------ #
+
+
+def _explode_tree(array: dict[str, str], delimiter: str = "/") -> dict | bool:
+    """Convert a flat ``{path: name}`` dict into a nested tree structure.
+
+    Ported from legacy ``Admin::explodeTree($array, $delimiter='/')``.
+    Example input:  {"General/flow1": "My Flow", "HR/onboarding": "Onboarding"}
+    Returns nested dict with asort applied at each level.
+    """
+    if not isinstance(array, dict):
+        return False
+
+    return_arr: dict = {}
+
+    for key in sorted(array.keys()):
+        val = array[key]
+        parts = [p for p in str(key).split(delimiter) if p]
+        leaf_part = parts.pop()
+
+        parent_ref = return_arr
+        for part in parts:
+            if part not in parent_ref or not isinstance(parent_ref[part], dict):
+                parent_ref[part] = {}
+            parent_ref = parent_ref[part]
+
+        if leaf_part not in parent_ref:
+            parent_ref[leaf_part] = val
+
+    def _sort(d):  # type: ignore[misc]
+        if isinstance(d, dict):
+            return {k: _sort(v) for k, v in sorted(d.items())}
+        return d
+
+    return _sort(return_arr)
+
+
+def _convert_to_ext(array: dict | list):
+    """Convert nested tree dict to ExtJS TreePanel format with leaf/cls fields.
+
+    Ported from legacy ``Admin::convert_to_ext($array)``.
+    Produces nodes with: id, text, leaf bool, cls (folder/user), iconCls, children[].
+    """
+    rtn_arr = []
+
+    for key, value in array.items():
+        if isinstance(value, dict):
+            sorted_value = {k: value[k] for k in sorted(value.keys())}
+            children_flat = _convert_to_ext(sorted_value)
+            # Flatten nested lists from recursive calls
+            children = []
+            for c in children_flat:
+                if isinstance(c, list):
+                    children.extend(c)
+                else:
+                    children.append(c)
+            rtn_arr.append(
+                {
+                    "text": key,
+                    "leaf": False,
+                    "cls": "folder",
+                    "expanded": True,
+                    "children": children,
+                }
+            )
+        else:
+            rtn_arr.append(
+                {
+                    "id": str(key),
+                    "text": value,
+                    "leaf": True,
+                    "iconCls": None,
+                }
+            )
+
+    return rtn_arr
+
+
+def _flatten_leafs_to_ext(array: dict) -> list[dict]:
+    """Extract all leaf nodes from a nested tree dict into a flat ExtJS array.
+
+    Returns only items with ``leaf=True``, each containing id, text, and leaf fields.
+    Used by get_tree2 to produce the legacy-style flat model list for the browser panel.
+
+    Sort order: leaf ASC (all True), then text ASC — matches Ext JS sort:
+        [{\"property\":\"leaf\",\"direction\":\"ASC\"},{\"property\":\"text\",\"direction\":\"ASC\"}]
+    """
+    leaves: list[dict] = []
+
+    def _walk(node_dict: dict):
+        for key, value in node_dict.items():
+            if isinstance(value, dict):
+                _walk(value)
+            else:
+                leaves.append(
+                    {
+                        "id": str(key),
+                        "text": value,
+                        "leaf": True,
+                    }
+                )
+
+    _walk(array)
+    leaves.sort(key=lambda n: (n["leaf"], n["text"]))
+    return leaves
+
+
 # -- Step 17 (legacy): tokens (stub) ----------------------------------------- #
 
 
@@ -702,3 +810,40 @@ async def tokens(
     Stub returns an empty token list until the engine is wired up.
     """
     return TokensResponse(idwf=idwf, idcase=idcase, count=0, tokens=[])
+
+
+# -- Step 18: get_tree2 (legacy Admin.php) ------------------------------------ #
+
+
+@router.post("/get_tree2/{output_format}")
+async def get_tree2(
+    output_format: OutputFormat,
+    user: User = Depends(get_current_user),
+):
+    """Build a tree JSON representation of all BPMN models.
+
+    Mirrors legacy ``Admin::get_tree2()`` — queries BpmModel for idwf/folder/data,
+    builds a flat ``{folder/idwf => name [idwf]}`` map, explodes into nested dict,
+    then converts to ExtJS leaf/children format (like ``convert_to_ext``).
+
+    Returns JSON array of tree nodes suitable for an ExtJS TreePanel proxy.
+    """
+    # Query all models for idwf, folder, data columns (same projection as legacy)
+    svc = await _get_svc()  # type: ignore[misc]
+    stmt = select(BpmModel.idwf, BpmModel.folder, BpmModel.data).order_by(
+        BpmModel.folder, BpmModel.idwf
+    )
+    result = cast(CursorResult, await svc.db.execute(stmt))
+
+    m_arr: dict[str, str] = {}
+    for idwf_val, folder, data in result.fetchall():
+        if not idwf_val or not isinstance(data, dict):
+            continue
+        name = (data.get("properties") or {}).get("name", "no name")
+        folder_str = f"{folder}/" if folder else ""
+        m_arr[f"{folder_str}{idwf_val}"] = f"{name} [{idwf_val}]"
+
+    tree_data = _explode_tree(m_arr, delimiter="/")
+    full_tree = _flatten_leafs_to_ext(tree_data)
+
+    return JSONResponse(content=full_tree, status_code=200)

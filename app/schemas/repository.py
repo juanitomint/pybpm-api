@@ -6,8 +6,16 @@ Organized into:
 """
 
 from datetime import datetime
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class OutputFormat(StrEnum):
+    """Valid output format values for tree/browser endpoints."""
+
+    json = "json"
+
 
 # -- Request Schemas ----------------------------------------------------------- #
 

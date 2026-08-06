@@ -35,6 +35,9 @@ class Config:
     ADMIN_GROUP_ID = int(os.environ.get("ADMIN_GROUP_ID", "1"))
     AUTODISCOVER_PATHS = as_bool(os.environ.get("AUTODISCOVER_PATHS", "false"))
 
+    LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+    LOG_FORMATTER = os.environ.get("LOG_FORMATTER", "")
+
 
 class DevelopmentConfig(Config):
     DEBUG = True

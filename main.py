@@ -1,11 +1,12 @@
+import logging
 import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from app.api.auth import router as auth_router
 from app.api.bpm.repository import router as bpm_router
+from app.core.logging import build_uvicorn_log_config
 
 SVG_DIR = "static/svg"
 
@@ -55,10 +56,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-if os.path.isdir("static"):
-    app.mount("/static", StaticFiles(directory="static"), name="static")
-
-
 app.include_router(auth_router)
 app.include_router(bpm_router)
 
@@ -73,7 +70,10 @@ async def root():
 def main():
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=5000)
+    log_config = build_uvicorn_log_config()
+    logging.config.dictConfig(log_config)
+
+    uvicorn.run(app, host="0.0.0.0", port=5000, log_config=log_config)
 
 
 if __name__ == "__main__":

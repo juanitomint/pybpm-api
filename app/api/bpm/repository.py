@@ -17,7 +17,7 @@ from typing import cast
 from urllib.parse import unquote_plus
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, status
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import CursorResult, select
 from sqlalchemy import delete as sa_delete
 

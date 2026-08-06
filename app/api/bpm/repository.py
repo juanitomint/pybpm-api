@@ -17,7 +17,7 @@ from typing import cast
 from urllib.parse import unquote_plus
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, status
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from sqlalchemy import CursorResult, select
 from sqlalchemy import delete as sa_delete
 
@@ -444,7 +444,11 @@ async def thumbnail(
 
 @router.get("/svg/{idwf}")
 async def svg(idwf: str):
-    """Return formatted SVG content with XML declaration header."""
+    """Return XHTML document (plain text/html response).
+
+    Matches legacy CodeIgniter Repository::svg(): decodes idwf, loads the model's
+    SVG payload from disk, applies ``str_replace('>', ">\n")``, and echoes raw XHTML.
+    """
     idwf = unquote_plus(idwf)
 
     svg_path = SVG_DIR / f"{idwf}.svg"
@@ -454,16 +458,27 @@ async def svg(idwf: str):
             detail=f"SVG file for '{idwf}' not found",
         )
 
-    content = svg_path.read_text(encoding="utf-8")
-    # Add XML declaration if missing (matches legacy str_replace('>', ">\n"))
-    if not content.startswith("<?xml"):
-        content = '<?xml version="1.0" encoding="utf-8"?>\n' + content
+    svg_content = svg_path.read_text(encoding="utf-8")
+    formatted_svg = svg_content.replace(">", ">\n")
 
-    return FileResponse(
-        path=str(svg_path),
-        media_type="image/svg+xml",
+    html = f"""<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>SVG:{idwf}</title>
+</head>
+<body>
+    <div id="svg-box">
+{formatted_svg}
+    </div>
+</body>
+</html>"""
+
+    return HTMLResponse(
+        content=html,
         headers={"Cache-Control": "no-store, no-cache"},
     )
+
+
 
 
 # -- Step 13: get_shapes ------------------------------------------------------ #

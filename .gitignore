@@ -135,3 +135,4 @@ data
 .ruff_cache/
 .zed/
 files/
+static/svg/*.svg

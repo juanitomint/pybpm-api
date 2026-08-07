@@ -191,7 +191,7 @@ async def add(
     scaffold_data: dict = {
         "resourceId": idwf,
         "stencilset": {
-            "url": "../../jscript/bpm-dna2/stencilsets/bpmn2.0/bpmn2.0_2.json",
+            "url": ".static/jscript/editor/stencilsets/bpmn2.0/bpmn2.0_2.json",
             "namespace": "http://b3mn.org/stencilset/bpmn2.0#",
         },
         "stencil": {"id": "BPMNDiagram"},
@@ -285,16 +285,17 @@ async def load(
     data = model.data or {
         "resourceId": idwf,
         "stencilset": {
-            "url": "../../jscript/bpm-dna2/stencilsets/bpmn2.0/bpmn2.0_2.json",
+            "url": "static/jscript/editor/stencilsets/bpmn2.0/bpmn2.0_2.json",
             "namespace": "http://b3mn.org/stencilset/bpmn2.0#",
         },
         "stencil": {"id": "BPMNDiagram"},
     }
-
+    data["stencilset"]["url"] = "static/jscript/editor/stencilsets/bpmn2.0/bpmn2.0_2.json"
     headers = {
         "Cache-Control": "no-store, no-cache, must-revalidate",
         "Pragma": "no-cache",
     }
+
     return JSONResponse(content=data, status_code=200, headers=headers)
 
 

@@ -290,7 +290,7 @@ async def load(
         },
         "stencil": {"id": "BPMNDiagram"},
     }
-    data["stencilset"]["url"] = "static/jscript/editor/stencilsets/bpmn2.0/bpmn2.0_2.json"
+    data["stencilset"]["url"] = "static/editor/stencilsets/bpmn2.0/bpmn2.0_2.json"
     headers = {
         "Cache-Control": "no-store, no-cache, must-revalidate",
         "Pragma": "no-cache",

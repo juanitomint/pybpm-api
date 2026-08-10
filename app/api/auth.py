@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from sqlalchemy import select
@@ -76,7 +76,8 @@ async def login(
 
 
 @router.get("/me", response_model=dict)
-async def get_me(user: User = Depends(get_current_user)):
+async def get_me(response: Response, user: User = Depends(get_current_user)):
+    response.headers["X-JSON"] = "{}"
     return {
         "idu": user.idu,
         "nick": user.nick,

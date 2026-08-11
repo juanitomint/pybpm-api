@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.auth import router as auth_router
+from app.api.bpm.engine import router as engine_router
 from app.api.bpm.repository import router as bpm_router
 from app.core.logging import build_uvicorn_log_config
 
@@ -58,6 +59,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(bpm_router)
+app.include_router(engine_router)
 
 _patch_openapi()
 

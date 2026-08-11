@@ -15,12 +15,14 @@ Key responsibilities:
 from datetime import datetime, timezone
 from typing import Any
 
+from fastapi import Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.bpm_model import BpmModel
 from app.models.case import BpmCase
 from app.models.token import Token, TokenHistory
+from extensions import get_async_db
 
 
 class EngineService:

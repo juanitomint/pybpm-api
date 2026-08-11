@@ -4,15 +4,18 @@ Ported from legacy CodeIgniter `dna2bpm/application/modules/dna2/controllers/Cas
 Handles case instance management with idcase as the primary parameter.
 
 Endpoints:
-- GET    /{idcase}              - Get a single case by ID
-- PATCH  /{idcase}              - Update case attributes
-- DELETE /{idcase}              - Delete a case
-- GET    /                      - List all cases (optional)
+- GET    /data/read/{idwf}              - Get cases in Ext.js format (returns totalCount + rows)
+- GET    /tokens/status/{idwf}/{idcase} - Get tokens for a case
+- GET    /{idcase}                      - Get a single case by ID
+- PATCH  /{idcase}                      - Update case attributes
+- DELETE /{idcase}                     - Delete a case
+- POST   /{idcase}/freez                - Freeze/unfreeze a case
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -20,6 +23,7 @@ from sqlalchemy import select, delete as sa_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
+from app.models.bpm_model import BpmModel
 from app.models.case import BpmCase
 from app.models.token import Token
 from app.schemas.case import (
@@ -34,7 +38,7 @@ from app.schemas.case import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/cases", tags=["case-manager"])
+router = APIRouter(prefix="/bpm/case_manager", tags=["case-manager"])
 
 
 async def get_db():
@@ -43,6 +47,149 @@ async def get_db():
     
     async with async_session_factory() as db:
         yield db
+
+
+@router.get("/data/read/{idwf}", status_code=status.HTTP_200_OK)
+async def read_cases(
+    idwf: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get cases for a workflow in Ext.js compatible format.
+
+    Ported from legacy CaseManager::read() method.
+    Returns data in Ext.data.Store format with totalCount and rows array containing
+    MongoDB-style _id structure ($id field) and formatted date fields.
+    
+    Args:
+        idwf: Workflow/model identifier to fetch cases for
+        
+    Returns:
+        Dict with 'totalCount' (int) and 'rows' (list of case dicts) in Ext.js format
+        
+    Raises:
+        HTTPException: 404 if model not found
+    """
+    # Validate model exists
+    stmt = select(BpmModel).where(BpmModel.idwf == idwf)
+    result = await db.execute(stmt)
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Model '{idwf}' does not exist",
+        )
+
+    # Fetch all cases for this workflow (legacy reads by idwf)
+    stmt = select(BpmCase).where(
+        BpmCase.idwf == idwf
+    ).order_by(BpmCase.created_at.desc())
+    
+    result = await db.execute(stmt)
+    cases = result.scalars().all()
+
+    # Convert to Ext.js format with MongoDB-style _id and formatted dates
+    rows = []
+    for case in cases:
+        # Format date as MM/DD/YYYY (legacy uses this format)
+        check_date_str = ""
+        if case.created_at:
+            check_date_str = case.created_at.strftime("%m/%d/%Y")
+
+        # Get initiator user info if available
+        user_name = "admin"  # default
+        iduser = None
+        if case.initiator_id:
+            from app.models.user import User
+            user_stmt = select(User).where(User.idu == case.initiator_id)
+            user_result = await db.execute(user_stmt)
+            user = user_result.scalar_one_or_none()
+            if user and hasattr(user, 'name'):
+                user_name = user.name or "admin"
+            iduser = case.initiator_id
+
+        rows.append({
+            "_id": {"$id": str(case.idcase)},  # MongoDB-style _id with $id field
+            "id": case.idcase,
+            "idwf": case.idwf,
+            "iduser": iduser or 0,
+            "status": case.status,
+            "checkdate": case.created_at.strftime("%Y-%m-%d %H:%M:%S") if case.created_at else "",
+            "user": user_name,
+            "date": check_date_str,
+        })
+
+    return {
+        "totalCount": len(rows),
+        "rows": rows,
+    }
+
+
+@router.get("/tokens/status/{idwf}/{idcase}", status_code=status.HTTP_200_OK)
+async def get_token_status(
+    idwf: str,
+    idcase: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get tokens for a case in Ext.js compatible format.
+
+    Ported from legacy Engine::tokens() method.
+    Returns token information including user assignments and task status.
+    
+    Args:
+        idwf: Workflow/model identifier
+        idcase: Case instance identifier
+        
+    Returns:
+        Dict with 'totalCount' (int) and 'rows' (list of token dicts) in Ext.js format
+        
+    Raises:
+        HTTPException: 404 if case not found
+    """
+    # Validate case exists
+    stmt = select(BpmCase).where(BpmCase.idcase == idcase, BpmCase.idwf == idwf)
+    result = await db.execute(stmt)
+    case = result.scalar_one_or_none()
+
+    if case is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Case '{idcase}' does not exist in workflow '{idwf}'",
+        )
+
+    # Fetch all tokens for this case
+    stmt = select(Token).where(
+        Token.case_id == idcase
+    ).order_by(Token.id_token)
+    
+    result = await db.execute(stmt)
+    tokens = result.scalars().all()
+
+    # Convert to Ext.js format with MongoDB-style _id and formatted dates
+    rows = []
+    for token in tokens:
+        user_name = "admin"  # default
+        if token.id_user:
+            from app.models.user import User
+            user_stmt = select(User).where(User.idu == token.id_user)
+            user_result = await db.execute(user_stmt)
+            user = user_result.scalar_one_or_none()
+            if user and hasattr(user, 'name'):
+                user_name = user.name or "admin"
+
+        rows.append({
+            "_id": {"$id": str(token.id_token)},  # MongoDB-style _id with $id field
+            "id_token": token.id_token,
+            "idwf": idwf,
+            "idcase": idcase,
+            "id_user": token.id_user or 0,
+            "name_user": user_name,
+            "status": token.status if hasattr(token, 'status') else "open",
+            "checkdate": token.updated_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(token, 'updated_at') and token.updated_at else "",
+        })
+
+    return {
+        "totalCount": len(rows),
+        "rows": rows,
+    }
 
 
 @router.get("/{idcase}", response_model=CaseRead, status_code=status.HTTP_200_OK)

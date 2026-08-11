@@ -8,6 +8,7 @@ from app.api.auth import router as auth_router
 from app.api.bpm.engine import router as engine_router
 from app.api.bpm.repository import router as bpm_router
 from app.api.bpm.cases import router as cases_router
+from app.api.bpm.tokens import router as tokens_router
 from app.core.logging import build_uvicorn_log_config
 
 SVG_DIR = "static/svg"

@@ -444,3 +444,133 @@ def _generate_case_id() -> str:
     system uses UUID4 to avoid collisions without a dedicated sequence table.
     """
     return uuid.uuid4().hex[:8].upper()
+
+
+# -- Phase 4: Utility / internal methods ------------------------------------ #
+
+
+def run_after(callbacks: list[dict]) -> None:
+    """Execute deferred callback stack (mirrors legacy ``Engine::run_after()`` L303-310).
+
+    The legacy code iterates through ``$this->run_after_stack``, calling each
+    entry's function with its arguments via ``call_user_func_array``. This
+    Python equivalent takes a list of dicts, each containing "func" (a callable)
+    and "args" (positional args), and executes them in order.
+
+    Usage::
+
+        run_after([{"func": my_callback, "args": [arg1, arg2]}])
+
+    Raises ``TypeError`` if any entry is malformed or the function isn't callable.
+    """
+    for entry in callbacks:
+        func = entry.get("func")
+        args = entry.get("args", [])
+        if not callable(func):
+            raise TypeError(
+                f"run_after: callback at index {entry} has non-callable 'func'"
+            )
+        if not isinstance(args, (list, tuple)):
+            raise TypeError(
+                f"run_after: 'args' must be a list or tuple, got {type(args)}"
+            )
+        func(*args)
+
+
+async def task_locked(
+    service: EngineService,
+    case_id: str,
+    idwf: str,
+    resource_id: str,
+    current_user_id: int | None = None,
+) -> dict:
+    """Check if a case is locked by another user (mirrors legacy ``Engine::task_locked()`` L480-506).
+
+    The legacy code renders an HTML modal via CodeIgniter's parser. This Python
+    equivalent returns structured data instead — pybpm-ui will render its own UI.
+
+    Returns a dict with keys: locked (bool), locked_by, locked_date, resource_id,
+    idwf, case. When ``locked=True``, the caller should return HTTP 423 to indicate
+    the resource is locked by another user.
+    """
+    from sqlalchemy import select as sa_select
+
+    from app.models.case import BpmCase
+
+    stmt = sa_select(BpmCase).where(
+        BpmCase.idcase == case_id,
+        BpmCase.idwf == idwf,
+    )
+    result = await service.db.execute(stmt)  # type: ignore[misc]
+    case_row = result.scalar_one_or_none()
+
+    if not case_row or not case_row.locked_by:
+        return {
+            "locked": False,
+            "locked_by": None,
+            "locked_date": None,
+            "resource_id": resource_id,
+            "idwf": idwf,
+            "case": case_id,
+        }
+
+    # If the current user is the one who locked it, allow access (mirrors legacy behavior)
+    if current_user_id and case_row.locked_by == current_user_id:
+        return {
+            "locked": False,
+            "locked_by": None,
+            "locked_date": None,
+            "resource_id": resource_id,
+            "idwf": idwf,
+            "case": case_id,
+        }
+
+    # Case is locked by another user — refuse access
+    return {
+        "locked": True,
+        "locked_by": case_row.locked_by,
+        "locked_date": str(case_row.locked_date) if case_row.locked_date else None,
+        "resource_id": resource_id,
+        "idwf": idwf,
+        "case": case_id,
+    }
+
+
+def recursive_array_search(
+    haystack: dict | list, needle: object, index_key: str | None = None
+) -> tuple[object, object] | bool:
+    """Deep search through nested dicts/lists for a value (mirrors legacy ``Engine::recursiveArraySearch()`` L917-935).
+
+    Walks the entire tree depth-first and returns ``(parent_key, parent_value)`` when
+    the needle is found as a leaf value. When ``index_key`` is provided, only keys with
+    that name are considered (e.g., searching for all nodes where key == 'name').
+
+    Returns ``False`` if no match is found, or a tuple of ``(key, value)`` where the
+    value matches the needle.
+
+    Legacy used PHP's ``RecursiveArrayIterator`` and ``RecursiveIteratorIterator``; this
+    Python implementation uses plain recursion for clarity and performance.
+    """
+
+    def _walk(node: object):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                # Check if this key matches the index filter and value matches needle
+                if index_key is not None and k != index_key:
+                    result = _walk(v)
+                    if result is not False:
+                        return result
+                    continue
+                if v == needle:
+                    return (k, node)  # type: ignore[return-value]
+                result = _walk(v)
+                if result is not False:
+                    return result
+        elif isinstance(node, list):
+            for item in node:
+                result = _walk(item)
+                if result is not False:
+                    return result
+        return False
+
+    return _walk(haystack) or False  # type: ignore[return-value]

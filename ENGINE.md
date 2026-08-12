@@ -92,8 +92,8 @@ These are helpers that don't need HTTP endpoints but support the engine logic.
 | # | Method | Legacy method | Notes | Status |
 |---|--------|---------------|-------|--------|
 | 4.1 | `run_after()` | `Engine::run_after()` L303-310 | Execute deferred callback stack (e.g., from manual_task) | ✅ DONE |
-| 4.2 | `task_locked()` | `Engine::task_locked()` L480-506 | Check if case is locked by another user | PENDING |
-| 4.3 | `recursive_array_search(...)` | `Engine::recursiveArraySearch()` L917-935 | Deep search through nested arrays (debug util) | PENDING |
+| 4.2 | `task_locked()` | `Engine::task_locked()` L480-506 | Check if case is locked by another user | ✅ DONE |
+| 4.3 | `recursive_array_search(...)` | `Engine::recursiveArraySearch()` L917-935 | Deep search through nested arrays (debug util) | ✅ DONE |
 
 ---
 
@@ -259,5 +259,5 @@ Do not leave ENGINE.md stale — it is the single source of truth for migration 
 - **Phase 0** (Schemas): 7/7 ✅ — All request/response schemas implemented in `app/schemas/engine.py`.
 - **Phase 1** (Router endpoints): 5/6 ✅ — `newcase`, `start`, `run`, `post/{token_id}`, and `assign` wired up. Task 1.6 (`get_pending`) skipped — handled by pybpm-ui, not ported to engine.
 - **Phase 2** (Engine service): 1/15 ✅ — `get_engine_service()` DI function implemented; rest of Phase 2 implementation follows in next steps.
-- **Phase 3** (Helpers): 4/7 ✅ — `_find_start_shapes`, `_generate_case_id`, `bind_array_to_object` done in engine.py. `_get_shape`, `_get_previous` done in EngineService. `_find_shapes` NOT implemented (PENDING). `_get_shape_byname` PENDING.
-- **Phase 4** (Utility methods): 0/3 ❌ — None of the utility helpers implemented yet (`run_after`, `task_locked`, `recursive_array_search`).
+- **Phase 3** (Helpers): 6/7 ✅ — `_find_start_shapes`, `_generate_case_id`, `bind_array_to_object` done in engine.py. `_get_shape`, `_get_previous` done in EngineService. `_find_shapes` NOT implemented (PENDING). `_get_shape_byname` PENDING.
+- **Phase 4** (Utility methods): 3/3 ✅ — All three utility helpers (`run_after`, `task_locked`, `recursive_array_search`) implemented in engine.py.

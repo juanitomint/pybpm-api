@@ -30,6 +30,7 @@ class BpmModel(Base):
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.idu"))
 
     author = relationship("User", backref="models", foreign_keys=[created_by])
+    cases = relationship("BpmCase", back_populates="model")
 
     @property
     def svg_path(self) -> Path:

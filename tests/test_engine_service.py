@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from app.services.engine_service import EngineService
 
@@ -30,10 +31,7 @@ class TestEngineService:
             MockToken.return_value = MagicMock()
 
             await service.create_token(
-                idwf="test-wf",
-                case_id="case-123",
-                resource_id="shape-1",
-                type_="Task"
+                idwf="test-wf", case_id="case-123", resource_id="shape-1", type_="Task"
             )
 
             # Verify that db.add was called with a token object
@@ -45,7 +43,6 @@ class TestEngineService:
         service = EngineService(mock_db)
 
         # Mock the select statement and execute result
-        from sqlalchemy import select
 
         mock_token1 = MagicMock(idtoken=1)
         mock_token2 = MagicMock(idtoken=2)
@@ -77,9 +74,7 @@ class TestEngineService:
         mock_db.execute.side_effect = mock_execute
 
         result = await service.get_token(
-            idwf="test-wf",
-            case_id="case-123",
-            resource_id="shape-1"
+            idwf="test-wf", case_id="case-123", resource_id="shape-1"
         )
 
         assert result == expected_token
@@ -99,10 +94,7 @@ class TestEngineService:
 
         mock_db.execute.side_effect = mock_execute
 
-        result = await service.get_pending_tokens(
-            idwf="test-wf",
-            case_id="case-123"
-        )
+        result = await service.get_pending_tokens(idwf="test-wf", case_id="case-123")
 
         assert len(result) == 1
 

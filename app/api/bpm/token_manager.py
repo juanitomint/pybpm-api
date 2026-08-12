@@ -16,14 +16,13 @@ All endpoints use {idwf}, {idcase}, and optionally {idtoken} as parameters.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, delete as sa_delete
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user
 from app.models.bpm_model import BpmModel
 from app.models.case import BpmCase
 from app.models.token import Token
@@ -34,7 +33,6 @@ from app.schemas.token import (
     TokenCreateResponse,
     TokenDeleteResponse,
     TokenListResponse,
-    TokenResponse,
     TokenUpdate,
     TokenUpdateResponse,
 )
@@ -47,12 +45,16 @@ router = APIRouter(prefix="/tokens", tags=["token-manager"])
 async def get_db():
     """FastAPI dependency for async database session."""
     from extensions import async_session_factory
-    
+
     async with async_session_factory() as db:
         yield db
 
 
-@router.get("/{idwf}/{idcase}", response_model=list[TokenListResponse], status_code=status.HTTP_200_OK)
+@router.get(
+    "/{idwf}/{idcase}",
+    response_model=list[TokenListResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def list_tokens(
     idwf: str,
     idcase: str,
@@ -62,14 +64,14 @@ async def list_tokens(
 
     Ported from legacy Engine::get_all_tokens($model, $idwf, $case) method.
     Returns complete list of tokens with their current status and assignments.
-    
+
     Args:
         idwf: Workflow/model identifier
         idcase: Case identifier
-        
+
     Returns:
         List[TokenListResponse] containing all token information
-        
+
     Raises:
         HTTPException: 404 if model or case not found
     """
@@ -92,35 +94,41 @@ async def list_tokens(
         )
 
     # Fetch all tokens for this case
-    stmt = select(Token).where(
-        Token.idwf == idwf,
-        Token.case_id == idcase,
-    ).order_by(Token.created_at.asc())
-    
+    stmt = (
+        select(Token)
+        .where(
+            Token.idwf == idwf,
+            Token.case_id == idcase,
+        )
+        .order_by(Token.created_at.asc())
+    )
+
     result = await db.execute(stmt)
     tokens = result.scalars().all()
 
     token_responses = []
     for token in tokens:
-        token_responses.append(TokenListResponse(
-            idtoken=token.idtoken,
-            idwf=token.idwf,
-            case_id=token.case_id,
-            resource_id=token.resource_id,
-            type=token.type,
-            status=token.status,
-            assign=token.assign,
-            check_date=token.check_date,
-            created_at=token.created_at,
-        ))
+        token_responses.append(
+            TokenListResponse(
+                idtoken=token.idtoken,
+                idwf=token.idwf,
+                case_id=token.case_id,
+                resource_id=token.resource_id,
+                type=token.type,
+                status=token.status,
+                assign=token.assign,
+                check_date=token.check_date,
+                createdAt=token.created_at,
+            )
+        )
 
     return token_responses
 
 
 @router.post(
-    "/create/{idwf}/{idcase}", 
-    response_model=TokenCreateResponse, 
-    status_code=status.HTTP_201_CREATED
+    "/create/{idwf}/{idcase}",
+    response_model=TokenCreateResponse,
+    status_code=status.HTTP_201_CREATED,
 )
 async def create_token(
     idwf: str,
@@ -132,15 +140,15 @@ async def create_token(
 
     Ported from legacy Engine::token_checkin($model, $idwf, $case, $resourceId, $type) method.
     Used to initialize tokens when starting cases or advancing workflow.
-    
+
     Args:
         idwf: Workflow/model identifier
         idcase: Case identifier
         request: TokenCreate with resource_id, type_, and optional status
-        
+
     Returns:
         TokenCreateResponse with new token ID
-        
+
     Raises:
         HTTPException: 404 if model or case not found
         HTTPException: 409 if token already exists for this shape
@@ -177,7 +185,7 @@ async def create_token(
         )
 
     # Create new token
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     token = Token(
         idwf=idwf,
         case_id=idcase,
@@ -193,11 +201,13 @@ async def create_token(
     db.add(token)
     await db.flush()  # Get auto-generated IDtoken
 
-    logger.info(f"Created token {token.idtoken} for shape '{request.resource_id}' in case '{idcase}'")
+    logger.info(
+        f"Created token {token.idtoken} for shape '{request.resource_id}' in case '{idcase}'"
+    )
 
     return TokenCreateResponse(
         ok=True,
-        msg=f"Token created successfully",
+        msg="Token created successfully",
         idtoken=token.idtoken,
     )
 
@@ -214,16 +224,16 @@ async def update_token(
 
     Ported from legacy Engine::update_token($model, $idwf, $idcase, $idtoken) method.
     Updates status (pending/waiting/finished), user assignments, or external data.
-    
+
     Args:
         idwf: Workflow/model identifier
         idcase: Case identifier
         idtoken: Token ID to update
         request: TokenUpdate with fields to modify
-        
+
     Returns:
         TokenUpdateResponse confirming the update
-        
+
     Raises:
         HTTPException: 404 if token not found or doesn't belong to this case
     """
@@ -264,7 +274,7 @@ async def update_token(
                 token.external_data[origin] = data
 
     # Update timestamp
-    token.updated_at = datetime.now(timezone.utc)
+    token.updated_at = datetime.now(UTC)
 
     await db.commit()
     await db.refresh(token)
@@ -289,15 +299,15 @@ async def delete_token(
 
     Ported from legacy Engine::delete_token($model, $idwf, $idcase, $idtoken) method.
     Removes a specific token (typically after completion or cancellation).
-    
+
     Args:
         idwf: Workflow/model identifier
         idcase: Case identifier
         idtoken: Token ID to delete
-        
+
     Returns:
         TokenDeleteResponse confirming the deletion
-        
+
     Raises:
         HTTPException: 404 if token not found or doesn't belong to this case
     """
@@ -318,23 +328,23 @@ async def delete_token(
 
     # Record history before deletion (legacy records all state changes)
     from app.models.token import TokenHistory
-    
+
     history = TokenHistory(
         idwf=token.idwf,
         case_id=token.case_id,
         resource_id=token.resource_id,
         type=token.type,
         status="deleted",
-        check_date=datetime.now(timezone.utc),
+        check_date=datetime.now(UTC),
         run_count=token.run_count,
     )
-    
+
     db.add(history)
-    
+
     # Delete the token itself
     delete_stmt = sa_delete(Token).where(Token.idtoken == idtoken)
     await db.execute(delete_stmt)
-    
+
     await db.commit()
 
     logger.info(f"Token {idtoken} deleted successfully")
@@ -358,16 +368,16 @@ async def assign_token(
 
     Ported from legacy Engine::assign_task($model, $idwf, $idcase, $src_resourceId, $resourceId, $idu) method.
     Sets the assign array on a token for task delegation and inbox processing.
-    
+
     Args:
         idwf: Workflow/model identifier
         idcase: Case identifier
         idtoken: Token ID to assign
         request: TokenAssignRequest with user_ids list
-        
+
     Returns:
         TokenAssignResponse with updated assignment
-        
+
     Raises:
         HTTPException: 404 if token not found or doesn't belong to this case
         HTTPException: 400 if no user IDs provided
@@ -395,9 +405,8 @@ async def assign_token(
         )
 
     # Update assign array (legacy uses $idu directly)
-    old_assign = token.assign or []
     token.assign = request.user_ids
-    
+
     logger.info(f"Token {idtoken} assigned to users: {request.user_ids}")
 
     await db.commit()
@@ -421,14 +430,14 @@ async def get_token_status(
 
     Ported from legacy Engine::get_case_tokens($model, $idwf, $case) method.
     Returns aggregated status counts and pending/finished breakdowns.
-    
+
     Args:
         idwf: Workflow/model identifier
         idcase: Case identifier
-        
+
     Returns:
         List of dicts containing status summaries (legacy returns array with 'pending', 'waiting', etc.)
-        
+
     Raises:
         HTTPException: 404 if model or case not found
     """
@@ -452,25 +461,27 @@ async def get_token_status(
 
     # Count tokens by status (legacy uses COUNT GROUP BY)
     from sqlalchemy import func
-    
-    stmt = select(
-        Token.status,
-        func.count(Token.idtoken).label('count')
-    ).where(
-        Token.idwf == idwf,
-        Token.case_id == idcase,
-    ).group_by(Token.status)
-    
+
+    stmt = (
+        select(Token.status, func.count(Token.idtoken).label("count"))
+        .where(
+            Token.idwf == idwf,
+            Token.case_id == idcase,
+        )
+        .group_by(Token.status)
+    )
+
     result = await db.execute(stmt)
     rows = result.fetchall()
 
     # Format as legacy expects: array with status keys
     status_summary = []
     for row in rows:
-        status_summary.append({
-            "status": row[0],
-            "count": int(row[1]),  # Cast to int for consistency
-        })
+        status_summary.append(
+            {
+                "status": row[0],
+                "count": int(row[1]),  # Cast to int for consistency
+            }
+        )
 
     return status_summary
-

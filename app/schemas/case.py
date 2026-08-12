@@ -6,10 +6,9 @@ All endpoints are under prefix `/cases` in `app/api/bpm/cases.py`.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
-
 
 # -- Request Schemas ----------------------------------------------------------- #
 
@@ -64,7 +63,7 @@ class CaseRead(BaseModel):
     Returns case attributes in JSON format with camelCase aliases matching the legacy response shape.
     """
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     idcase: str
     idwf: str
@@ -91,8 +90,8 @@ class CasesListResponse(BaseModel):
     idcase: str
     idwf: str
     status: str
-    initiator_id: int | None = Field(default=None, alias="initiatorId")
-    created_at: datetime = Field(alias="createdAt")
+    initiator_id: int | None = None
+    created_at: datetime
 
 
 class UpdateCaseResponse(BaseModel):
@@ -106,10 +105,12 @@ class UpdateCaseResponse(BaseModel):
 class FreezCaseResponse(BaseModel):
     """POST /cases/{idcase}/freez — response after freeze/unfreeze."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     ok: bool = True
     msg: str = "Case frozen/unfrozen successfully"
     idcase: str | None = None
-    locked_by: int | None = Field(default=None, alias="lockedBy")
+    locked_by: int | None = None
 
 
 class DeleteCaseResponse(BaseModel):

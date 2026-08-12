@@ -14,6 +14,7 @@ import sys
 from datetime import UTC, datetime
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 BASE = pathlib.Path(__file__).parent
@@ -50,8 +51,11 @@ async def seed(db: AsyncSession):
             await db.flush()
             print(f"  OK   {path.name} -> idwf={idwf}")
             successes += 1
-        except Exception as exc:
-            print(f"  ERR  {path.name} -> idwf={idwf}: {exc}")
+        except SQLAlchemyError as exc:
+            print(f"  ERR  {path.name} -> idwf={idwf}: DB error - {exc}")
+            failures.append((str(path.name), str(exc)))
+        except (json.JSONDecodeError, KeyError) as exc:
+            print(f"  ERR  {path.name} -> idwf={idwf}: data error - {exc}")
             failures.append((str(path.name), str(exc)))
 
     await db.commit()

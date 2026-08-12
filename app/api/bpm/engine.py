@@ -18,11 +18,9 @@ These correspond to the legacy ``Engine::Newcase()``, ``Engine::Start()``,
 from __future__ import annotations
 
 import uuid
-from typing import cast
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.models.bpm_model import BpmModel

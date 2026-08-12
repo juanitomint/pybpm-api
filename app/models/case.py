@@ -1,7 +1,7 @@
-from datetime import datetime, timezone
+from datetime import datetime
 
 import sqlalchemy as sa
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -38,9 +38,12 @@ class BpmCase(Base):
     data: Mapped[dict | None] = mapped_column(sa.JSON())  # arbitrary case variables
     locked_by: Mapped[int | None] = mapped_column(Integer)
     locked_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    run_manual: Mapped[bool | None] = mapped_column(default=False, server_default="false")
+    run_manual: Mapped[bool | None] = mapped_column(
+        default=False, server_default="false"
+    )
     parent_json: Mapped[dict | None] = mapped_column(
-        "parent", sa.JSON()  # legacy used a JSON blob; keep column name for clarity
+        "parent",
+        sa.JSON(),  # legacy used a JSON blob; keep column name for clarity
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -58,6 +61,4 @@ class BpmCase(Base):
         "User", backref="cases_initiated", foreign_keys=[initiator_id]
     )
     model = relationship("BpmModel", back_populates="cases")
-    tokens = relationship(
-        "Token", back_populates="case", cascade="all, delete-orphan"
-    )
+    tokens = relationship("Token", back_populates="case", cascade="all, delete-orphan")

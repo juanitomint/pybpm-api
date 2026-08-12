@@ -156,10 +156,10 @@ SVG_DIR = Path(__file__).parent.parent / "static" / "svg"
 class BpmModel(db.Model):
     __tablename__ = "bpm_models"
 
-    idwf = Column(String(255), primary_key=True)          # model identifier (unique key)
+    idwf = Column(String(255), primary_key=True)  # model identifier (unique key)
     folder = Column(String(255), nullable=False, default="General")
     version = Column(SmallInteger, nullable=False, default=0)
-    data = Column(db.JSON, nullable=True)                  # BPMN stencil data (JSONB in PG)
+    data = Column(db.JSON, nullable=True)  # BPMN stencil data (JSONB in PG)
     created_at = Column(DateTime, nullable=False)
     updated_at = Column(DateTime, nullable=False)
     created_by = Column(Integer, ForeignKey("users.idu"), nullable=True)
@@ -635,16 +635,19 @@ from config import Config
 
 security = HTTPBearer()
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
     try:
         payload = jwt.decode(
-            credentials.credentials,
-            Config.SECRET_KEY,
-            algorithms=["HS256"]
+            credentials.credentials, Config.SECRET_KEY, algorithms=["HS256"]
         )
         user_id = int(payload["sub"])
     except JWTError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+        )
     return user_id
 ```
 
@@ -789,7 +792,7 @@ uv run alembic upgrade head                # apply pending migrations
 **Cause:** SVG file doesn't exist at `pybpm/static/svg/{idwf}.svg`.  
 **Fix:** Ensure the SVG was written during save:
 ```python
-# In service.save(): 
+# In service.save():
 svg_dir = Path(__file__).parent.parent / "static" / "svg"
 svg_dir.mkdir(parents=True, exist_ok=True)
 (svg_dir / f"{idwf}.svg").write_text(svg_content, encoding="utf-8")

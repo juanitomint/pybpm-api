@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
-
 
 # -- Request Schemas ----------------------------------------------------------- #
 
@@ -72,7 +71,9 @@ class TokenResponse(BaseModel):
     resource_id: str
     type: str  # stencil ID (e.g., "Task", "StartNoneEvent")
     status: str
-    assign: list[int] | None = Field(default=None, description="List of assigned user IDs")
+    assign: list[int] | None = Field(
+        default=None, description="List of assigned user IDs"
+    )
     external_data: dict[str, Any] | None = Field(
         default=None, description="External webhook data keyed by origin"
     )
@@ -94,7 +95,9 @@ class TokenListResponse(BaseModel):
     resource_id: str
     type: str  # stencil ID (e.g., "Task", "StartNoneEvent")
     status: str
-    assign: list[int] | None = Field(default=None, description="List of assigned user IDs")
+    assign: list[int] | None = Field(
+        default=None, description="List of assigned user IDs"
+    )
     check_date: datetime | None = Field(default=None)
     created_at: datetime = Field(alias="createdAt")
 
@@ -143,4 +146,3 @@ class TokenStatusSummary(BaseModel):
     waiting_count: int = 0
     finished_count: int = 0
     total_count: int = 0
-

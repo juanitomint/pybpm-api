@@ -17,4 +17,3 @@ def pytest_configure(config):
     """Configure pytest to exclude non-test directories."""
     # Exclude pgdata directory which may have permission issues
     config.addinivalue_line("norecursedirs", "pgdata")
-

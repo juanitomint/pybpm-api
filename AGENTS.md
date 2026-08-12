@@ -83,7 +83,9 @@ Keep routers thin. The flow should be:
 Use type hints for automatic OpenAPI documentation:
 ```python
 @router.post("/", response_model=CaseRead, status_code=201)
-async def create_case(case_in: CaseCreate, service: CaseService = Depends(get_case_service)):
+async def create_case(
+    case_in: CaseCreate, service: CaseService = Depends(get_case_service)
+):
     return await service.create(case_in)
 ```
 

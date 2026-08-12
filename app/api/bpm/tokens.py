@@ -15,15 +15,17 @@ Endpoints:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Literal, Optional, Union
+from datetime import UTC, datetime
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select, delete as sa_delete
+from pydantic import BaseModel, Field
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.token import Token, TokenHistory
+from app.schemas.token import TokenResponse
 
 logger = logging.getLogger(__name__)
 
@@ -32,13 +34,23 @@ logger = logging.getLogger(__name__)
 # Request/Response Models (Ext.js compatible)
 # ============================================================================
 
+
+class TokenPayload(BaseModel):
+    """Schema for a single token payload (legacy Ext.js format)."""
+
+    resource_id: str = ""
+    type_: str = Field(default="Task", alias="type")
+
+
 class TokenCreateRequest(BaseModel):
     """Request body for creating new tokens."""
-    tokens: Union[dict, list]  # Support single token dict or bulk creation
+
+    tokens: TokenPayload | list[TokenPayload]  # Single token or bulk creation
 
 
 class CreateTokenResponse(BaseModel):
     """Response after creating token(s)."""
+
     ok: bool = True
     msg: str
     tokens: list[dict[str, Any]]
@@ -46,15 +58,17 @@ class CreateTokenResponse(BaseModel):
 
 class TokenUpdateRequest(BaseModel):
     """Request body for updating token attributes."""
-    status: Optional[str] = None  # pending/waiting/finished
-    assign: Optional[list[int]] = None
-    external_data: Optional[dict[str, Any]] = None
-    run_count: Optional[int] = None
-    check_date: Optional[datetime] = None
+
+    status: str | None = None  # pending/waiting/finished
+    assign: list[int] | None = None
+    external_data: dict[str, Any] | None = None
+    run_count: int | None = None
+    check_date: datetime | None = None
 
 
 class UpdateTokenResponse(BaseModel):
     """Response after updating token."""
+
     ok: bool = True
     msg: str
     idtoken: int
@@ -64,6 +78,7 @@ class UpdateTokenResponse(BaseModel):
 
 class DeleteTokenResponse(BaseModel):
     """Response after deleting token."""
+
     ok: bool = True
     msg: str
     idtoken: int
@@ -71,17 +86,18 @@ class DeleteTokenResponse(BaseModel):
 
 class TokenAssignRequest(BaseModel):
     """Request body for assigning/removing users from tokens."""
+
     id_user: int
     action: Literal["add", "remove"]  # Add or remove user from assignment
 
 
 class AssignTokenResponse(BaseModel):
     """Response after assigning/removing user."""
+
     ok: bool = True
     msg: str
     idtoken: int
     assign: list[int]
-
 
 
 router = APIRouter(prefix="/bpm/token_manager", tags=["token-manager"])
@@ -90,7 +106,7 @@ router = APIRouter(prefix="/bpm/token_manager", tags=["token-manager"])
 async def get_db():
     """FastAPI dependency for async database session."""
     from extensions import async_session_factory
-    
+
     async with async_session_factory() as db:
         yield db
 
@@ -105,23 +121,24 @@ async def list_tokens(
 
     Ported from legacy Engine::tokens() method.
     Returns token information including user assignments and task status.
-    
+
     Args:
         idwf: Workflow/model identifier
         case_id: Case instance identifier
-        
+
     Returns:
         Dict with 'totalCount' (int) and 'rows' (list of token dicts) in Ext.js format
-        
+
     Raises:
         HTTPException: 404 if case not found
     """
     # Validate case exists
-    stmt = select(Token).where(
-        Token.case_id == case_id,
-        Token.idwf == idwf
-    ).order_by(Token.idtoken)
-    
+    stmt = (
+        select(Token)
+        .where(Token.case_id == case_id, Token.idwf == idwf)
+        .order_by(Token.idtoken)
+    )
+
     result = await db.execute(stmt)
     tokens = result.scalars().all()
 
@@ -131,25 +148,30 @@ async def list_tokens(
         user_name = "admin"  # default
         if token.assign and len(token.assign) > 0:
             from app.models.user import User
+
             user_stmt = select(User).where(User.idu == token.assign[0])
             user_result = await db.execute(user_stmt)
             user = user_result.scalar_one_or_none()
-            if user and hasattr(user, 'name'):
+            if user and hasattr(user, "name"):
                 user_name = user.name or "admin"
 
-        rows.append({
-            "_id": {"$id": str(token.idtoken)},  # MongoDB-style _id with $id field
-            "id_token": token.idtoken,
-            "idwf": idwf,
-            "case_id": case_id,
-            "resource_id": token.resource_id,
-            "type": token.type,
-            "status": token.status,
-            "assign": token.assign or [],
-            "name_user": user_name,
-            "checkdate": token.check_date.strftime("%Y-%m-%d %H:%M:%S") if token.check_date else "",
-            "run_count": token.run_count,
-        })
+        rows.append(
+            {
+                "_id": {"$id": str(token.idtoken)},  # MongoDB-style _id with $id field
+                "id_token": token.idtoken,
+                "idwf": idwf,
+                "case_id": case_id,
+                "resource_id": token.resource_id,
+                "type": token.type,
+                "status": token.status,
+                "assign": token.assign or [],
+                "name_user": user_name,
+                "checkdate": token.check_date.strftime("%Y-%m-%d %H:%M:%S")
+                if token.check_date
+                else "",
+                "run_count": token.run_count,
+            }
+        )
 
     return {
         "totalCount": len(rows),
@@ -167,23 +189,24 @@ async def get_token_status(
 
     Ported from legacy Engine::tokens() method.
     Returns compact token information for status display in UI.
-    
+
     Args:
         idwf: Workflow/model identifier
         idcase: Case instance identifier
-        
+
     Returns:
         Dict with 'totalCount' (int) and 'rows' (list of token dicts) in Ext.js format
-        
+
     Raises:
         HTTPException: 404 if case not found
     """
     # Validate case exists
-    stmt = select(Token).where(
-        Token.case_id == idcase,
-        Token.idwf == idwf
-    ).order_by(Token.idtoken)
-    
+    stmt = (
+        select(Token)
+        .where(Token.case_id == idcase, Token.idwf == idwf)
+        .order_by(Token.idtoken)
+    )
+
     result = await db.execute(stmt)
     tokens = result.scalars().all()
 
@@ -192,23 +215,28 @@ async def get_token_status(
         user_name = "admin"
         if token.assign and len(token.assign) > 0:
             from app.models.user import User
+
             user_stmt = select(User).where(User.idu == token.assign[0])
             user_result = await db.execute(user_stmt)
             user = user_result.scalar_one_or_none()
-            if user and hasattr(user, 'name'):
+            if user and hasattr(user, "name"):
                 user_name = user.name or "admin"
 
-        rows.append({
-            "_id": {"$id": str(token.idtoken)},
-            "id_token": token.idtoken,
-            "idwf": idwf,
-            "case_id": idcase,
-            "resource_id": token.resource_id,
-            "type": token.type,
-            "status": token.status,
-            "name_user": user_name,
-            "checkdate": token.check_date.strftime("%Y-%m-%d %H:%M:%S") if token.check_date else "",
-        })
+        rows.append(
+            {
+                "_id": {"$id": str(token.idtoken)},
+                "id_token": token.idtoken,
+                "idwf": idwf,
+                "case_id": idcase,
+                "resource_id": token.resource_id,
+                "type": token.type,
+                "status": token.status,
+                "name_user": user_name,
+                "checkdate": token.check_date.strftime("%Y-%m-%d %H:%M:%S")
+                if token.check_date
+                else "",
+            }
+        )
 
     return {
         "totalCount": len(rows),
@@ -225,13 +253,13 @@ async def get_token(
 
     Ported from legacy Engine::get_token() method.
     Returns full token details including assignments and execution state.
-    
+
     Args:
         idtoken: The unique identifier of the token to retrieve
-        
+
     Returns:
         TokenResponse with all token attributes in JSON format
-        
+
     Raises:
         HTTPException: 404 if token not found
     """
@@ -249,10 +277,11 @@ async def get_token(
     name_user = "admin"
     if token.assign and len(token.assign) > 0:
         from app.models.user import User
+
         user_stmt = select(User).where(User.idu == token.assign[0])
         user_result = await db.execute(user_stmt)
         user = user_result.scalar_one_or_none()
-        if user and hasattr(user, 'name'):
+        if user and hasattr(user, "name"):
             name_user = user.name or "admin"
 
     return {
@@ -282,24 +311,22 @@ async def create_token(
 
     Ported from legacy Engine::createToken() method.
     Creates token records with proper assignment and status tracking.
-    
+
     Args:
         idwf: Workflow/model identifier
         case_id: Case instance identifier
         request: TokenCreateRequest with token attributes
-        
+
     Returns:
         CreateTokenResponse indicating success/failure
-        
+
     Raises:
         HTTPException: 404 if case not found, 422 for validation errors
     """
     # Validate case exists
     from app.models.case import BpmCase
-    stmt = select(BpmCase).where(
-        BpmCase.idcase == case_id,
-        BpmCase.idwf == idwf
-    )
+
+    stmt = select(BpmCase).where(BpmCase.idcase == case_id, BpmCase.idwf == idwf)
     result = await db.execute(stmt)
     case = result.scalar_one_or_none()
 
@@ -311,39 +338,45 @@ async def create_token(
 
     # Create new token(s) — support bulk creation via list
     tokens_created = []
-    
+
     if isinstance(request.tokens, list):
         for token_data in request.tokens:
             new_token = Token(
                 idwf=idwf,
                 case_id=case_id,
                 resource_id=token_data.resource_id,
-                type=token_data.type,
+                type=token_data.type_,
                 status="pending",
-                assign=token_data.assign or [],
-                external_data=token_data.external_data,
+                assign=[],
+                external_data=None,
             )
             db.add(new_token)
             await db.flush()  # Get the auto-generated idtoken
-            tokens_created.append({
-                "idtoken": new_token.idtoken,
-                "status": "created",
-            })
+            tokens_created.append(
+                {
+                    "idtoken": new_token.idtoken,
+                    "status": "created",
+                }
+            )
     else:
+        token_data = request.tokens  # type: ignore[assignment]
+        assert isinstance(token_data, TokenPayload)
         new_token = Token(
             idwf=idwf,
             case_id=case_id,
-            resource_id=request.tokens.resource_id if hasattr(request.tokens, 'resource_id') else "",
-            type=request.tokens.type if hasattr(request.tokens, 'type') else "Task",
+            resource_id=token_data.resource_id,
+            type=token_data.type_,
             status="pending",
             assign=[],
         )
         db.add(new_token)
         await db.flush()
-        tokens_created.append({
-            "idtoken": new_token.idtoken,
-            "status": "created",
-        })
+        tokens_created.append(
+            {
+                "idtoken": new_token.idtoken,
+                "status": "created",
+            }
+        )
 
     await db.commit()
 
@@ -368,16 +401,16 @@ async def update_token(
 
     Ported from legacy Engine::updateToken() method.
     Modifies token state including assignments, completion, and lock information.
-    
+
     Args:
         idwf: Workflow/model identifier
         case_id: Case instance identifier
         idtoken: Token ID to update
         request: TokenUpdateRequest with fields to modify
-        
+
     Returns:
         UpdateTokenResponse indicating success/failure
-        
+
     Raises:
         HTTPException: 404 if token not found, 422 for validation errors
     """
@@ -399,20 +432,21 @@ async def update_token(
     # Update provided fields
     if request.status is not None:
         token.status = request.status
-    
+
     if request.assign is not None:
         token.assign = request.assign
-    
+
     if request.external_data is not None:
         token.external_data = request.external_data
-    
+
     if request.run_count is not None:
         token.run_count = request.run_count
 
     # Update check_date if provided or on status change
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc)
-    
+    from datetime import datetime
+
+    now = datetime.now(UTC)
+
     if request.check_date is not None:
         token.check_date = request.check_date
     elif request.status in ["waiting", "finished"]:
@@ -421,7 +455,9 @@ async def update_token(
     await db.commit()
     await db.refresh(token)
 
-    logger.info(f"Token {idtoken} updated: status={token.status}, assign={token.assign}")
+    logger.info(
+        f"Token {idtoken} updated: status={token.status}, assign={token.assign}"
+    )
 
     return UpdateTokenResponse(
         ok=True,
@@ -443,15 +479,15 @@ async def delete_token(
 
     Ported from legacy Engine::deleteToken() method.
     Removes the token record and optionally creates history entry.
-    
+
     Args:
         idwf: Workflow/model identifier
         case_id: Case instance identifier
         idtoken: Token ID to delete
-        
+
     Returns:
         DeleteTokenResponse indicating success/failure
-        
+
     Raises:
         HTTPException: 404 if token not found, 422 for validation errors
     """
@@ -477,7 +513,7 @@ async def delete_token(
         resource_id=token.resource_id,
         type=token.type,
         status=f"deleted_{token.status}",  # Mark as deleted with original status
-        check_date=datetime.now(timezone.utc),
+        check_date=datetime.now(UTC),
         run_count=token.run_count,
     )
     db.add(history)
@@ -485,7 +521,7 @@ async def delete_token(
     # Delete the token
     delete_stmt = sa_delete(Token).where(Token.idtoken == idtoken)
     await db.execute(delete_stmt)
-    
+
     await db.commit()
 
     logger.info(f"Token {idtoken} deleted from case {case_id}")
@@ -509,16 +545,16 @@ async def assign_token(
 
     Ported from legacy Engine::assignToken() method.
     Updates the assign field with user ID for task assignment.
-    
+
     Args:
         idwf: Workflow/model identifier
         case_id: Case instance identifier
         idtoken: Token ID to assign
         request: TokenAssignRequest with user ID
-        
+
     Returns:
         AssignTokenResponse indicating success/failure
-        
+
     Raises:
         HTTPException: 404 if token not found, 422 for validation errors
     """
@@ -539,7 +575,7 @@ async def assign_token(
 
     # Update assignment list
     current_assign = token.assign or []
-    
+
     if request.action == "add":
         if request.id_user not in current_assign:
             current_assign.append(request.id_user)
@@ -560,63 +596,5 @@ async def assign_token(
 
 
 # ============================================================================
-# Response Models (Ext.js compatible)
-# ============================================================================
-
-class TokenCreateRequest(BaseModel):
-    """Request body for creating new tokens."""
-    tokens: Union[dict, list]  # Support single token dict or bulk creation
-
-
-class CreateTokenResponse(BaseModel):
-    """Response after creating token(s)."""
-    ok: bool = True
-    msg: str
-    tokens: list[dict[str, Any]]
-
-
-class TokenUpdateRequest(BaseModel):
-    """Request body for updating token attributes."""
-    status: Optional[str] = None  # pending/waiting/finished
-    assign: Optional[list[int]] = None
-    external_data: Optional[dict[str, Any]] = None
-    run_count: Optional[int] = None
-    check_date: Optional[datetime] = None
-
-
-class UpdateTokenResponse(BaseModel):
-    """Response after updating token."""
-    ok: bool = True
-    msg: str
-    idtoken: int
-    status: str
-    assign: list[int]
-
-
-class DeleteTokenResponse(BaseModel):
-    """Response after deleting token."""
-    ok: bool = True
-    msg: str
-    idtoken: int
-
-
-class TokenAssignRequest(BaseModel):
-    """Request body for assigning/removing users from tokens."""
-    id_user: int
-    action: Literal["add", "remove"]  # Add or remove user from assignment
-
-
-class AssignTokenResponse(BaseModel):
-    """Response after assigning/removing user."""
-    ok: bool = True
-    msg: str
-    idtoken: int
-    assign: list[int]
-
-
-# ============================================================================
 # Import BaseModels for Pydantic validation
 # ============================================================================
-
-from pydantic import BaseModel, Field, ConfigDict
-from typing import Union, Literal, Any

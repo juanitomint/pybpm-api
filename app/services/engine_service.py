@@ -12,15 +12,14 @@ Key responsibilities:
 - Signal/trigger/subprocess handling (deferred)
 """
 
-from datetime import datetime, timezone
-from typing import Any
+from collections.abc import Sequence
+from datetime import UTC, datetime
 
 from fastapi import Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.bpm_model import BpmModel
-from app.models.case import BpmCase
 from app.models.token import Token, TokenHistory
 from extensions import get_async_db
 
@@ -38,7 +37,12 @@ class EngineService:
     # -- Token lifecycle ----------------------------------------------------- #
 
     async def create_token(
-        self, idwf: str, case_id: str, resource_id: str, type_: str, status: str = "pending"
+        self,
+        idwf: str,
+        case_id: str,
+        resource_id: str,
+        type_: str,
+        status: str = "pending",
     ) -> None:
         """Insert a new token for a shape in a case."""
         token = Token(
@@ -63,7 +67,9 @@ class EngineService:
         for token in tokens:
             await self.db.delete(token)
 
-    async def get_token(self, idwf: str, case_id: str, resource_id: str) -> Token | None:
+    async def get_token(
+        self, idwf: str, case_id: str, resource_id: str
+    ) -> Token | None:
         """Fetch a single token by (idwf, case_id, resourceId)."""
         stmt = select(Token).where(
             Token.idwf == idwf,
@@ -75,7 +81,7 @@ class EngineService:
 
     async def get_pending_tokens(
         self, idwf: str, case_id: str, status_filter: list[str] | None = None
-    ) -> list[Token]:
+    ) -> Sequence[Token]:
         """Fetch pending/waiting tokens for a case.
 
         Optional `status_filter` limits results to specific statuses (e.g., ['pending', 'waiting']).
@@ -94,7 +100,7 @@ class EngineService:
         """Mark a token as finished and record history."""
         token.status = "finished"
         token.run_count += 1
-        token.updated_at = datetime.now(timezone.utc)
+        token.updated_at = datetime.now(UTC)
         await self.db.flush()
 
         # Record in history table
@@ -104,7 +110,7 @@ class EngineService:
             resource_id=token.resource_id,
             type=token.type,
             status="finished",
-            check_date=datetime.now(timezone.utc),
+            check_date=datetime.now(UTC),
             run_count=token.run_count,
         )
         self.db.add(history)
@@ -152,7 +158,10 @@ class EngineService:
             if not isinstance(node, dict):
                 return
             stencil = node.get("stencil") or {}
-            if isinstance(stencil, dict) and "start" in str(stencil.get("id", "")).lower():
+            if (
+                isinstance(stencil, dict)
+                and "start" in str(stencil.get("id", "")).lower()
+            ):
                 starts.append(node)
             for key in ("childShapes", "shapes"):
                 children = node.get(key, [])

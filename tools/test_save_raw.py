@@ -68,7 +68,9 @@ async def post_save(url: str, token: str, payload: dict[str, str]) -> httpx.Resp
 
     data_field = payload.get("data", "{}")
     try:
-        data_obj = _json.loads(data_field) if isinstance(data_field, str) else data_field
+        data_obj = (
+            _json.loads(data_field) if isinstance(data_field, str) else data_field
+        )
         idwf = data_obj.get("resourceId", "unknown")
     except (ValueError, TypeError):
         idwf = "unknown"

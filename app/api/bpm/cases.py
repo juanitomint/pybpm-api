@@ -15,14 +15,13 @@ Endpoints:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, delete as sa_delete
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user
 from app.models.bpm_model import BpmModel
 from app.models.case import BpmCase
 from app.models.token import Token
@@ -44,7 +43,7 @@ router = APIRouter(prefix="/bpm/case_manager", tags=["case-manager"])
 async def get_db():
     """FastAPI dependency for async database session."""
     from extensions import async_session_factory
-    
+
     async with async_session_factory() as db:
         yield db
 
@@ -59,13 +58,13 @@ async def read_cases(
     Ported from legacy CaseManager::read() method.
     Returns data in Ext.data.Store format with totalCount and rows array containing
     MongoDB-style _id structure ($id field) and formatted date fields.
-    
+
     Args:
         idwf: Workflow/model identifier to fetch cases for
-        
+
     Returns:
         Dict with 'totalCount' (int) and 'rows' (list of case dicts) in Ext.js format
-        
+
     Raises:
         HTTPException: 404 if model not found
     """
@@ -79,10 +78,10 @@ async def read_cases(
         )
 
     # Fetch all cases for this workflow (legacy reads by idwf)
-    stmt = select(BpmCase).where(
-        BpmCase.idwf == idwf
-    ).order_by(BpmCase.created_at.desc())
-    
+    stmt = (
+        select(BpmCase).where(BpmCase.idwf == idwf).order_by(BpmCase.created_at.desc())
+    )
+
     result = await db.execute(stmt)
     cases = result.scalars().all()
 
@@ -99,23 +98,28 @@ async def read_cases(
         iduser = None
         if case.initiator_id:
             from app.models.user import User
+
             user_stmt = select(User).where(User.idu == case.initiator_id)
             user_result = await db.execute(user_stmt)
             user = user_result.scalar_one_or_none()
-            if user and hasattr(user, 'name'):
+            if user and hasattr(user, "name"):
                 user_name = user.name or "admin"
             iduser = case.initiator_id
 
-        rows.append({
-            "_id": {"$id": str(case.idcase)},  # MongoDB-style _id with $id field
-            "id": case.idcase,
-            "idwf": case.idwf,
-            "iduser": iduser or 0,
-            "status": case.status,
-            "checkdate": case.created_at.strftime("%Y-%m-%d %H:%M:%S") if case.created_at else "",
-            "user": user_name,
-            "date": check_date_str,
-        })
+        rows.append(
+            {
+                "_id": {"$id": str(case.idcase)},  # MongoDB-style _id with $id field
+                "id": case.idcase,
+                "idwf": case.idwf,
+                "iduser": iduser or 0,
+                "status": case.status,
+                "checkdate": case.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                if case.created_at
+                else "",
+                "user": user_name,
+                "date": check_date_str,
+            }
+        )
 
     return {
         "totalCount": len(rows),
@@ -133,21 +137,21 @@ async def get_token_status(
 
     Ported from legacy Engine::tokens() method.
     Returns token information including user assignments and task status.
-    
+
     Args:
         idwf: Workflow/model identifier
         idcase: Case instance identifier
-        
+
     Returns:
         Dict with 'totalCount' (int) and 'rows' (list of token dicts) in Ext.js format
-        
+
     Raises:
         HTTPException: 404 if case not found
     """
     # Validate case exists
     stmt = select(BpmCase).where(BpmCase.idcase == idcase, BpmCase.idwf == idwf)
     result = await db.execute(stmt)
-    case = result.scalar_one_or_none()
+    case: BpmCase | None = result.scalar_one_or_none()
 
     if case is None:
         raise HTTPException(
@@ -156,10 +160,8 @@ async def get_token_status(
         )
 
     # Fetch all tokens for this case
-    stmt = select(Token).where(
-        Token.case_id == idcase
-    ).order_by(Token.id_token)
-    
+    stmt = select(Token).where(Token.case_id == idcase).order_by(Token.idtoken)
+
     result = await db.execute(stmt)
     tokens = result.scalars().all()
 
@@ -167,24 +169,32 @@ async def get_token_status(
     rows = []
     for token in tokens:
         user_name = "admin"  # default
-        if token.id_user:
+        assigned_ids = token.assign or []
+        primary_uid = assigned_ids[0] if assigned_ids else None
+
+        if primary_uid:
             from app.models.user import User
-            user_stmt = select(User).where(User.idu == token.id_user)
+
+            user_stmt = select(User).where(User.idu == primary_uid)
             user_result = await db.execute(user_stmt)
             user = user_result.scalar_one_or_none()
-            if user and hasattr(user, 'name'):
+            if user and hasattr(user, "name"):
                 user_name = user.name or "admin"
 
-        rows.append({
-            "_id": {"$id": str(token.id_token)},  # MongoDB-style _id with $id field
-            "id_token": token.id_token,
-            "idwf": idwf,
-            "idcase": idcase,
-            "id_user": token.id_user or 0,
-            "name_user": user_name,
-            "status": token.status if hasattr(token, 'status') else "open",
-            "checkdate": token.updated_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(token, 'updated_at') and token.updated_at else "",
-        })
+        rows.append(
+            {
+                "_id": {"$id": str(token.idtoken)},  # MongoDB-style _id with $id field
+                "id_token": token.idtoken,
+                "idwf": idwf,
+                "idcase": idcase,
+                "id_user": primary_uid or 0,
+                "name_user": user_name,
+                "status": token.status if hasattr(token, "status") else "open",
+                "checkdate": token.updated_at.strftime("%Y-%m-%d %H:%M:%S")
+                if hasattr(token, "updated_at") and token.updated_at
+                else "",
+            }
+        )
 
     return {
         "totalCount": len(rows),
@@ -201,19 +211,19 @@ async def get_case(
 
     Ported from legacy CaseManager::get_case() method.
     Returns case details including status, data, and metadata in JSON format.
-    
+
     Args:
         idcase: The unique identifier of the case to retrieve
-        
+
     Returns:
         CaseRead model with all case attributes in JSON format
-        
+
     Raises:
         HTTPException: 404 if case not found
     """
     stmt = select(BpmCase).where(BpmCase.idcase == idcase)
     result = await db.execute(stmt)
-    case = result.scalar_one_or_none()
+    case: BpmCase | None = result.scalar_one_or_none()
 
     if case is None:
         raise HTTPException(
@@ -234,20 +244,20 @@ async def update_case(
 
     Ported from legacy CaseManager::update() method.
     Updates status, data variables, or parent information for a running case.
-    
+
     Args:
         idcase: The unique identifier of the case to update
         request: UpdateCaseRequest with fields to modify
-        
+
     Returns:
         UpdateCaseResponse indicating success/failure
-        
+
     Raises:
         HTTPException: 404 if case not found
     """
     stmt = select(BpmCase).where(BpmCase.idcase == idcase)
     result = await db.execute(stmt)
-    case = result.scalar_one_or_none()
+    case: BpmCase | None = result.scalar_one_or_none()
 
     if case is None:
         raise HTTPException(
@@ -258,10 +268,10 @@ async def update_case(
     # Update provided fields
     if request.status is not None:
         case.status = request.status
-    
+
     if request.data is not None:
         case.data = request.data
-    
+
     if request.parent_json is not None:
         case.parent_json = request.parent_json
 
@@ -287,20 +297,20 @@ async def freez_case(
 
     Ported from legacy CaseManager::freez() method.
     Toggles the locked_by status to pause/resume case processing.
-    
+
     Args:
         idcase: The unique identifier of the case to freeze/unfreeze
         request: FreezCaseRequest with user ID performing the action
-        
+
     Returns:
         FreezCaseResponse with updated lock information
-        
+
     Raises:
         HTTPException: 404 if case not found
     """
     stmt = select(BpmCase).where(BpmCase.idcase == idcase)
     result = await db.execute(stmt)
-    case = result.scalar_one_or_none()
+    case: BpmCase | None = result.scalar_one_or_none()
 
     if case is None:
         raise HTTPException(
@@ -309,6 +319,7 @@ async def freez_case(
         )
 
     # Toggle freeze state based on locked_by presence
+    msg = "Case status unchanged"  # default message
     if request.iduser is not None:
         if case.locked_by == request.iduser:
             # Unfreeze - clear lock
@@ -317,9 +328,10 @@ async def freez_case(
             msg = "Case unfrozen successfully"
         else:
             # Freeze - set lock
-            from datetime import datetime, timezone
+            from datetime import datetime
+
             case.locked_by = request.iduser
-            case.locked_date = datetime.now(timezone.utc)
+            case.locked_date = datetime.now(UTC)
             msg = f"Case frozen by user {request.iduser}"
 
     await db.commit()
@@ -344,13 +356,13 @@ async def delete_case(
 
     Ported from legacy CaseManager::delete() method.
     Removes the case record and cascades to delete all related tokens.
-    
+
     Args:
         idcase: The unique identifier of the case to delete
-        
+
     Returns:
         DeleteCaseResponse indicating success/failure
-        
+
     Raises:
         HTTPException: 404 if case not found
     """
@@ -367,11 +379,11 @@ async def delete_case(
     # Delete all tokens first (cascade should handle this in DB)
     token_delete = sa_delete(Token).where(Token.case_id == idcase)
     await db.execute(token_delete)
-    
+
     # Delete the case itself
     delete_stmt = sa_delete(BpmCase).where(BpmCase.idcase == idcase)
     await db.execute(delete_stmt)
-    
+
     await db.commit()
 
     logger.info(f"Case {idcase} deleted successfully with all tokens")
@@ -390,10 +402,10 @@ async def list_cases(
     """List all cases.
 
     Retrieves a paginated list of case instances for display in the UI.
-    
+
     Returns:
         List[CasesListResponse] containing basic case information
-        
+
     Note:
         For large datasets, implement pagination parameters (skip, limit)
     """
@@ -404,18 +416,24 @@ async def list_cases(
     # Convert to response models
     case_responses = []
     for case in cases:
-        case_responses.append(CasesListResponse(
-            idcase=case.idcase,
-            idwf=case.idwf,
-            status=case.status,
-            initiator_id=case.initiator_id,
-            created_at=case.created_at,
-        ))
+        case_responses.append(
+            CasesListResponse(
+                idcase=case.idcase,
+                idwf=case.idwf,
+                status=case.status,
+                initiator_id=case.initiator_id,
+                created_at=case.created_at,
+            )
+        )
 
     return case_responses
 
 
-@router.get("/search/{status}", response_model=list[CasesListResponse], status_code=status.HTTP_200_OK)
+@router.get(
+    "/search/{status}",
+    response_model=list[CasesListResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def search_cases(
     status_filter: str,
     db: AsyncSession = Depends(get_db),
@@ -424,29 +442,32 @@ async def search_cases(
 
     Ported from legacy CaseManager::search() method.
     Filters cases based on their current status (open, running, paused, closed).
-    
+
     Args:
         status_filter: The status to filter by
-        
+
     Returns:
         List[CasesListResponse] matching the status filter
     """
-    stmt = select(BpmCase).where(
-        BpmCase.status == status_filter
-    ).order_by(BpmCase.updated_at.desc())
-    
+    stmt = (
+        select(BpmCase)
+        .where(BpmCase.status == status_filter)
+        .order_by(BpmCase.updated_at.desc())
+    )
+
     result = await db.execute(stmt)
     cases = result.scalars().all()
 
     case_responses = []
     for case in cases:
-        case_responses.append(CasesListResponse(
-            idcase=case.idcase,
-            idwf=case.idwf,
-            status=case.status,
-            initiator_id=case.initiator_id,
-            created_at=case.created_at,
-        ))
+        case_responses.append(
+            CasesListResponse(
+                idcase=case.idcase,
+                idwf=case.idwf,
+                status=case.status,
+                initiator_id=case.initiator_id,
+                created_at=case.created_at,
+            )
+        )
 
     return case_responses
-

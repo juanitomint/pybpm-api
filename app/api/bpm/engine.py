@@ -440,10 +440,12 @@ async def assign(
 def _generate_case_id() -> str:
     """Generate a unique case identifier.
 
-    Legacy PHP used random 4-letter codes (chr(64+rand(1,26)) x 4); the new
-    system uses UUID4 to avoid collisions without a dedicated sequence table.
+    Mirrors the legacy PHP implementation which used random 4-letter codes
+    (chr(64+rand(1,26)) x 4) for human-readable case IDs like "KXRF".
+    Collisions are prevented by database-level uniqueness on ``idcase``.
     """
-    return uuid.uuid4().hex[:8].upper()
+    import random as _random
+    return "".join(chr(_random.randint(65, 90)) for _ in range(4))  # mirrors chr(64+rand(1,26)) x 4 from legacy PHP
 
 
 # -- Phase 4: Utility / internal methods ------------------------------------ #

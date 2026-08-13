@@ -14,7 +14,7 @@ class UserGroup(Base):
     without JSON serialization.
     """
 
-    __tablename__ = "users_groups"
+    __tablename__ = "users_groups"  # Note: DB already has a 'groups' table for definitions; this is the junction table
 
     iduser: Mapped[int] = mapped_column(
         Integer(), ForeignKey("users.idu"), primary_key=True

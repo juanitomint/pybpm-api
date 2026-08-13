@@ -22,7 +22,6 @@ from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.bpm_model import BpmModel
 from app.models.case import BpmCase
 from app.models.token import Token
 from app.schemas.case import (
@@ -62,21 +61,12 @@ async def read_cases(
     Args:
         idwf: Workflow/model identifier to fetch cases for
 
-    Returns:
-        Dict with 'totalCount' (int) and 'rows' (list of case dicts) in Ext.js format
-
     Raises:
-        HTTPException: 404 if model not found
-    """
-    # Validate model exists
-    stmt = select(BpmModel).where(BpmModel.idwf == idwf)
-    result = await db.execute(stmt)
-    if result.scalar_one_or_none() is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Model '{idwf}' does not exist",
-        )
+        HTTPException: 500 on database errors
 
+    Returns:
+        Dict with 'totalCount' (int) and 'rows' (list of case dicts) in Ext.js format — empty if no cases found for the workflow
+    """
     # Fetch all cases for this workflow (legacy reads by idwf)
     stmt = (
         select(BpmCase).where(BpmCase.idwf == idwf).order_by(BpmCase.created_at.desc())

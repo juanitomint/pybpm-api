@@ -16,12 +16,12 @@ class BpmCase(Base):
     optimistic concurrency control.
     """
 
-    __tablename__ = "bpm_cases"
+    __tablename__ = "cases"
 
     idcase: Mapped[str] = mapped_column(String(32), primary_key=True)
     idwf: Mapped[str] = mapped_column(
         String(255),
-        ForeignKey("bpm_models.idwf", ondelete="CASCADE"),
+        ForeignKey("models.idwf", ondelete="CASCADE"),
         index=True,
         nullable=False,
     )

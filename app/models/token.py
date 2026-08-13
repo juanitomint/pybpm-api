@@ -16,18 +16,18 @@ class Token(Base):
     and run count.
     """
 
-    __tablename__ = "bpm_tokens"
+    __tablename__ = "tokens"
 
     idtoken: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     idwf: Mapped[str] = mapped_column(
         String(255),
-        ForeignKey("bpm_models.idwf", ondelete="CASCADE"),
+        ForeignKey("models.idwf", ondelete="CASCADE"),
         index=True,
         nullable=False,
     )
     case_id: Mapped[str] = mapped_column(
         String(32),
-        ForeignKey("bpm_cases.idcase", ondelete="CASCADE"),
+        ForeignKey("cases.idcase", ondelete="CASCADE"),
         index=True,
         nullable=False,
     )
@@ -74,20 +74,20 @@ class TokenHistory(Base):
     Used for reporting and debugging workflow execution.
     """
 
-    __tablename__ = "bpm_token_history"
+    __tablename__ = "token_history"
 
     idhistory: Mapped[int] = mapped_column(
         Integer, primary_key=True, autoincrement=True
     )
     idwf: Mapped[str] = mapped_column(
         String(255),
-        ForeignKey("bpm_models.idwf", ondelete="CASCADE"),
+        ForeignKey("models.idwf", ondelete="CASCADE"),
         index=True,
         nullable=False,
     )
     case_id: Mapped[str] = mapped_column(
         String(32),
-        ForeignKey("bpm_cases.idcase", ondelete="CASCADE"),
+        ForeignKey("cases.idcase", ondelete="CASCADE"),
         index=True,
         nullable=False,
     )

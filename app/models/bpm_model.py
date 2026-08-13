@@ -12,7 +12,7 @@ SVG_DIR = Path(__file__).parent.parent.parent / "static" / "svg"
 
 
 class BpmModel(Base):
-    __tablename__ = "bpm_models"
+    __tablename__ = "models"
 
     idwf: Mapped[str] = mapped_column(String(255), primary_key=True)
     folder: Mapped[str] = mapped_column(String(255), nullable=False, default="General")

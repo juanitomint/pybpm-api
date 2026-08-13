@@ -18,7 +18,22 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.drop_column("bpm_models", "svg")
+    """Drop svg column if it exists (SVGs now live on disk).
+
+    Uses a PostgreSQL DO block to safely check for the column's existence
+    before dropping, avoiding transaction abort on missing columns.
+    """
+    op.execute("""
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'bpm_models' AND column_name = 'svg'
+            ) THEN
+                ALTER TABLE bpm_models DROP COLUMN svg;
+            END IF;
+        END $$;
+    """)
 
 
 def downgrade() -> None:

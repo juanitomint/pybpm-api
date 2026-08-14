@@ -8,6 +8,7 @@ from app.api.auth import router as auth_router
 from app.api.bpm.cases import router as cases_router
 from app.api.bpm.engine import router as engine_router
 from app.api.bpm.repository import router as bpm_router
+from app.api.bpm.tokens import router as token_manager_router
 from app.core.logging import build_uvicorn_log_config
 
 SVG_DIR = "static/svg"
@@ -62,6 +63,7 @@ app.include_router(auth_router)
 app.include_router(bpm_router)
 app.include_router(engine_router)
 app.include_router(cases_router)
+app.include_router(token_manager_router)
 
 _patch_openapi()
 

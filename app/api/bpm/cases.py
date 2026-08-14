@@ -15,7 +15,7 @@ Endpoints:
 from __future__ import annotations
 
 import logging
-from datetime import UTC
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import delete as sa_delete
@@ -281,16 +281,60 @@ async def get_token_status(
         # Get title from name field (legacy: $token['title']=$token['name'])
         token_title = getattr(token, 'name', '') or ''
 
+        # Calculate microtime from check_date (Unix timestamp with microseconds)
+        microtime_val = 0.0
+        interval_obj = {}
+        if token_check_date and isinstance(token_check_date, datetime):
+            epoch = datetime(1970, 1, 1, tzinfo=token_check_date.tzinfo or UTC)
+            delta = token_check_date - epoch
+            microtime_val = delta.total_seconds()
+
+            # Build interval breakdown (legacy format)
+            total_days = int(delta.days)
+            hours, remainder = divmod(int(delta.seconds), 3600)
+            minutes, seconds = divmod(remainder, 60)
+            microseconds = delta.microseconds / 1_000_000
+
+            interval_obj = {
+                "y": 0,
+                "m": 0,
+                "d": total_days % 30,
+                "h": hours,
+                "i": minutes,
+                "s": seconds,
+                "f": round(microseconds, 6),
+                "weekday": 0,
+                "weekday_behavior": 0,
+                "first_last_day_of": 0,
+                "invert": 0,
+                "days": total_days,
+                "special_type": 0,
+                "special_amount": 0,
+                "have_weekday_relative": 0,
+                "have_special_relative": 0,
+            }
+
+        # Get full checkdate string (YYYY-MM-DD HH:MM:SS) for API compatibility
+        check_date_full = ""
+        if token_check_date:
+            check_date_full = token_check_date.strftime("%Y-%m-%d %H:%M:%S")
+
         rows.append(
             {
-                "_id": {"$id": str(getattr(token, 'idtoken', 0))},  # MongoDB-style _id with $id field
                 "iduser": id_user,
+                "status": token.status,
+                "idwf": token.idwf,
+                "case": token.case_id,
+                "resourceId": token.resource_id,
+                "type": token.type,
+                "run": getattr(token, 'run_count', 0) or 0,
+                "checkdate": check_date_full,
+                "microtime": microtime_val,
+                "interval": interval_obj,
                 "lockedBy": locked_by_nick,
                 "user": user_nick,
-                "title": token_title,
                 "date": check_date_str,
                 "icon": icon_html,
-                "_class": getattr(token, '_class', 'Token'),
             }
         )
 

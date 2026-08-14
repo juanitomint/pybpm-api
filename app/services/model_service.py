@@ -107,6 +107,7 @@ class ModelService:
 
         self.db.add(new_model)
         await self.db.flush()
+        await self.db.commit()
 
         return {"ok": True, "msg": f"created id: {new_idwf}"}
 

@@ -200,6 +200,7 @@ async def create_token(
 
     db.add(token)
     await db.flush()  # Get auto-generated IDtoken
+    await db.commit()
 
     logger.info(
         f"Created token {token.idtoken} for shape '{request.resource_id}' in case '{idcase}'"

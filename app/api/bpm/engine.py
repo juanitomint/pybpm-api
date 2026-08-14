@@ -17,8 +17,8 @@ These correspond to the legacy ``Engine::Newcase()``, ``Engine::Start()``,
 
 from __future__ import annotations
 
-import uuid
-
+#import uuid
+import random
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy import select
 
@@ -151,8 +151,9 @@ async def newcase(
                 status="pending",
             )
 
-    # 5. Save the case record.
+    # 5. Save the case record (flush + commit — flush alone won't persist).
     await service.db.flush()
+    await service.db.commit()
 
     return CaseCreated(idwf=body.idwf, idcase=idcase)
 
@@ -337,6 +338,7 @@ async def post(
 
         token.external_data = ext_data
         await service.db.flush()
+        await service.db.commit()
 
     # Mark the token as done. The full run_post chain (load DataObjects, connectors, movenext)
     # is deferred until connector logic is implemented — see ENGINE.md Phase 2.
@@ -414,6 +416,7 @@ async def assign(
         # Token exists — update its assignment array (legacy ``assign_task``).
         existing_token.assign = body.user_ids
         await service.db.flush()
+        await service.db.commit()
     else:
         # Token doesn't exist — create one (legacy ``token_checkin``).
         stencil_id = ""
@@ -430,6 +433,8 @@ async def assign(
             assign=body.user_ids,
         )
         service.db.add(new_token)
+        await service.db.flush()
+        await service.db.commit()
 
     return AssignResponse(ok=True, msg="Task assigned successfully")
 
@@ -437,15 +442,16 @@ async def assign(
 # -- Helpers ---------------------------------------------------------------- #
 
 
-def _generate_case_id() -> str:
+def _generate_case_id(length: int = 4) -> str:
     """Generate a unique case identifier.
 
     Mirrors the legacy PHP implementation which used random 4-letter codes
     (chr(64+rand(1,26)) x 4) for human-readable case IDs like "KXRF".
     Collisions are prevented by database-level uniqueness on ``idcase``.
     """
-    import random as _random
-    return "".join(chr(_random.randint(65, 90)) for _ in range(4))  # mirrors chr(64+rand(1,26)) x 4 from legacy PHP
+    # return uuid=uuid.uuid4().hex[:8].upper()
+
+    return "".join(chr(random.randint(65, 90)) for _ in range(4))  # mirrors chr(64+rand(1,26)) x 4 from legacy PHP
 
 
 # -- Phase 4: Utility / internal methods ------------------------------------ #

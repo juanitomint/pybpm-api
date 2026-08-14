@@ -15,6 +15,8 @@ def mock_service():
     service.get_previous = AsyncMock()
     service.get_token = AsyncMock()
     service.get_shape = AsyncMock()
+    service.db = MagicMock()
+    service.db.flush = AsyncMock()
     return service
 
 
@@ -98,8 +100,8 @@ class TestSequenceFlowHandler:
         handler = SequenceFlowHandler()
         result = await handler.handle(mock_token, sequence_flow_shape, mock_service)
 
-        # Should return True (movenext not called internally)
-        assert result is True
+        # Should return False — handler consumed the token; dispatcher must NOT call movenext.
+        assert result is False
         mock_service.movenext.assert_not_called()
         # Token status should be set to stopped
         assert mock_token.status == "stoped"

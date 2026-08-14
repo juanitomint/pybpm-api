@@ -77,6 +77,28 @@ class _EngineHandlerRegistry:
 
 ENGINE_HANDLER_REGISTRY = _EngineHandlerRegistry()
 
+# -- Default (fallback) handler ------------------------------------------------ #
+
+class _DefaultShapeHandler:
+    """Fallback for any stencil ID with no registered phase-specific handler.
+
+    Mirrors legacy ``Engine::Run()`` behavior where an unknown `$callfunc` still
+    advances the token via movenext — no condition evaluation, no data transport,
+    no special logic. Phase 1 uses this for Start/End/Task/Gate shapes that land
+    in later phases; they must be registered before they can actually drive a case.
+    """
+
+    @classmethod
+    def stencil_id(cls) -> str:
+        return "_default"
+
+    async def handle(self, token, shape, service):  # noqa: ANN001, D401
+        """Advance the token to its outgoing shapes via movenext."""
+        await service.movenext(token.resource_id, token.idwf, token.case_id)
+        return False  # handler consumed the token; dispatcher must NOT call movenext again
+
+_DEFAULT_SHAPE_HANDLER = _DefaultShapeHandler()
+
 
 # -- newcase ------------------------------------------------------------------ #
 
@@ -214,6 +236,10 @@ async def start(
             )
             tokens_created += 1
 
+    # Persist token changes (mirrors flush+commit in newcase/post/assign).
+    await service.db.flush()
+    await service.db.commit()
+
     return StartResponse(
         idwf=body.idwf,
         idcase=body.idcase,
@@ -261,36 +287,47 @@ async def run(
     iteration = 0
     filter_statuses: list[str] = pending_statuses.copy()
 
-    while iteration < max_iterations:
-        iteration += 1
+    try:
+        while iteration < max_iterations:
+            iteration += 1
 
-        # Fetch tokens matching current status filter.
-        tokens = await service.get_pending_tokens(idwf, idcase, filter_statuses)
-        if not tokens:
-            break
+            # Fetch tokens matching current status filter.
+            tokens = await service.get_pending_tokens(idwf, idcase, filter_statuses)
+            if not tokens:
+                break
 
-        # Legacy line 278: after first pass, only look at 'pending' (not 'waiting').
-        filter_statuses = ["pending"]
+            # Legacy line 278: after first pass, only look at 'pending' (not 'waiting').
+            filter_statuses = ["pending"]
 
-        for token in tokens:
-            shape = await service.get_shape(token.resource_id, idwf)
-            if not shape:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Shape '{token.resource_id}' not found in model tree",
-                )
+            for token in tokens:
+                shape = await service.get_shape(token.resource_id, idwf)
+                if not shape:
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=f"Shape '{token.resource_id}' not found in model tree",
+                    )
 
-            stencil_id = (shape.get("stencil") or {}).get("id", "")
-            handler_cls = ENGINE_HANDLER_REGISTRY.get(stencil_id)
-
-            if handler_cls is not None:
-                instance = handler_cls()  # type: ignore[call-arg]
+                stencil_id = (shape.get("stencil") or {}).get("id", "")
+                handler_cls = ENGINE_HANDLER_REGISTRY.get(stencil_id) or _DEFAULT_SHAPE_HANDLER
+                if isinstance(handler_cls, type):
+                    instance = handler_cls()
+                else:
+                    instance = handler_cls
                 should_movenext = await instance.handle(token, shape, service)  # type: ignore[misc]
-            if should_movenext:
-                await service.movenext(token.resource_id, idwf, idcase)
+                if should_movenext:
+                    await service.movenext(token.resource_id, idwf, idcase)
+                # Check if handler requested a break (e.g. EndCancelEvent).
+                if getattr(service, "break_on_next", False):
+                    service.break_on_next = False  # type: ignore[attr-defined]
+                    break
 
+        # Persist engine loop changes (mirrors flush+commit in newcase/post/assign).
+        await service.db.flush()
+        await service.db.commit()
+    except Exception:
+        await service.db.rollback()
+        raise
     return RunResponse(ok=True, msg="Engine executed successfully")
-
 
 # -- post --------------------------------------------------------------------- #
 
@@ -300,13 +337,8 @@ async def post(
     token_id: int,
     body: PostRequest,
     user: User = Depends(get_current_user),
-    service: EngineService = Depends(get_engine_service),
 ):
-    """External webhook callback for a specific token.
-
-    Ported from legacy ``Engine::post($token_id, $external_origin, $external_id)``
-    (L316-333). The legacy controller:
-
+    """
     1. Looks up the token by ID via ``$this->bpm->get_token_byid($token_id)``.
     2. Saves external data on the case record under ``data['external'][origin][resourceId]``.
     3. Calls ``run_post()`` to load inbound DataObjects/connectors and advance the engine.

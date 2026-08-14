@@ -14,14 +14,13 @@ Key responsibilities:
 
 from collections.abc import Sequence
 from datetime import UTC, datetime
-
+import sqlalchemy as sa
 from fastapi import Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from extensions import get_async_db
 from app.models.bpm_model import BpmModel
 from app.models.token import Token, TokenHistory
-from extensions import get_async_db
 
 
 class EngineService:
@@ -115,6 +114,92 @@ class EngineService:
         )
         self.db.add(history)
 
+    # -- Shape parent lookup & case close ------------------------------------ #
+    async def get_shape_parent(self, resource_id: str, idwf: str) -> dict | None:
+        """Find the container parent shape of a given shape in the model tree.
+
+        First checks ``shape.properties.subproc_parent`` (explicit parent reference),
+        then walks the childShapes tree to find which shape has this resourceId as a
+        direct childShape. Returns None if no parent found.
+
+        Mirrors legacy ``run_EndNoneEvent()`` logic that checks $shape->properties->subproc_parent
+        before falling back to get_shape_parent($shape->resourceId, $wf).
+        """
+        # Step 1: Check shape's own subproc_parent property.
+        shape = await self.get_shape(resource_id, idwf)
+        if not shape:
+            return None
+        props = shape.get("properties") or {}
+        parent_rid = props.get("subproc_parent")
+        if parent_rid and isinstance(parent_rid, str):
+            parent = await self.get_shape(parent_rid, idwf)
+            if parent:
+                return parent
+
+        # Step 2: Walk tree to find which shape contains this resourceId as a child.
+        stmt = select(BpmModel.data).where(BpmModel.idwf == idwf)
+        result = await self.db.execute(stmt)
+        data = result.scalar_one_or_none()
+        if not data or "childShapes" not in data:
+            return None
+
+        def _walk(node: dict):
+            if not isinstance(node, dict):
+                return None
+            for key in ("childShapes", "shapes"):
+                children = node.get(key, [])
+                if isinstance(children, list):
+                    for child in children:
+                        if not isinstance(child, dict):
+                            continue
+                        rid = child.get("resourceId") or child.get("id")
+                        if rid == resource_id:
+                            return node  # found parent!
+                        found = _walk(child)
+                        if found:
+                            return found
+            return None
+
+        return _walk(data)
+    async def close_case_if_empty(
+        self, idwf: str, case_id: str, closer_resource_id: str | None = None
+    ) -> bool:
+        """Close the case if there are no active tokens (user/waiting/pending).
+
+        Counts tokens with status in ['user', 'waiting', 'pending']. If zero, updates
+        the case record to status='closed' and records closer + checkoutdate.
+
+        Returns True if the case was closed, False otherwise.
+        Mirrors legacy ``run_EndNoneEvent()`` L139-154.
+        """
+        from app.models.case import BpmCase
+
+        stmt = select(Token).where(
+            Token.idwf == idwf,
+            Token.case_id == case_id,
+            Token.status.in_(["user", "waiting", "pending"]),
+        )
+        result = await self.db.execute(stmt)
+        active_tokens = result.scalars().all()
+
+        if len(active_tokens) > 0:
+            return False
+
+        # No active tokens — close the case.
+        update_stmt = (
+            sa.update(BpmCase)
+            .where(
+                BpmCase.idcase == case_id,
+                BpmCase.idwf == idwf,
+            )
+            .values(
+                status="closed",
+                closer=closer_resource_id or "",
+                checkoutdate=datetime.now(UTC),
+            )
+        )
+        await self.db.execute(update_stmt)  # type: ignore[misc]
+        return True
     # -- Shape tree traversal ------------------------------------------------ #
 
     async def get_shape(self, resource_id: str, idwf: str) -> dict | None:
@@ -158,10 +243,7 @@ class EngineService:
             if not isinstance(node, dict):
                 return
             stencil = node.get("stencil") or {}
-            if (
-                isinstance(stencil, dict)
-                and "start" in str(stencil.get("id", "")).lower()
-            ):
+            if stencil.get("id") == "StartNoneEvent":
                 starts.append(node)
             for key in ("childShapes", "shapes"):
                 children = node.get(key, [])

@@ -95,8 +95,9 @@ class SequenceFlowHandler:
                     name=condition_expr,
                 )
                 service.db.add(history)  # type: ignore[attr-defined]
+                await service.db.flush()
                 token.status = "stoped"  # type: ignore[attr-defined]
-                return True
+                return False
 
         # None or Default — always movenext.
         await service.movenext(resource_id, idwf, case_id)

@@ -36,7 +36,7 @@ from app.schemas.case import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/bpm/case_manager", tags=["case-manager"])
+router = APIRouter(prefix="/case_manager", tags=["case-manager"])
 
 
 async def get_db():

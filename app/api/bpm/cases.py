@@ -36,7 +36,88 @@ from app.schemas.case import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/case_manager", tags=["case-manager"])
+"""Helper functions for Case Manager endpoints."""
+
+ICON_MAP = {
+    'SequenceFlow': 'connector/sequenceflow.png',
+    'EndNoneEvent': 'endevent/none.png',
+    'EndMessageEvent': 'endevent/message.png',
+    'StartMessageEvent ': 'startevent/message.png',
+    'Task': 'activity/task.png',
+    'CollapsedSubprocess': 'activity/event.subprocess.collapsed.png',
+    1: 'activity/event.subprocess.png',
+    2: 'activity/expanded.subprocess.png',
+    'SubProcess': 'activity/subprocess.png',
+    4: 'activity/task.png',
+    5: 'artifact/group.png',
+    'TextAnnotation': 'artifact/text.annotation.png',
+    'IntermediateCancelEvent': 'catching/cancel.png',
+    'IntermediateCompensationEventCatching': 'catching/compensation.png',
+    'IntermediateConditionalEvent': 'catching/conditional.png',
+    'IntermediateErrorEvent': 'catching/error.png',
+    'IntermediateEscalationEvent': 'catching/escalation.png',
+    'IntermediateLinkEventCatching': 'catching/link.png',
+    'IntermediateMessageEventCatching': 'catching/message.png',
+    'IntermediateParallelMultipleEventCatching': 'catching/multiple.parallel.png',
+    'IntermediateMultipleEventCatching': 'catching/multiple.png',
+    'IntermediateSignalEventCatching': 'catching/signal.png',
+    'IntermediateTimerEvent': 'catching/timer.png',
+    'Association_Bidirectional': 'connector/association.bidirectional.png',
+    'Association_Undirected': 'connector/association.undirected.png',
+    'Association_Unidirectional': 'connector/association.unidirectional.png',
+    'MessageFlow': 'connector/messageflow.png',
+    'DataObject': 'dataobject/data.object.png',
+    'DataStore': 'dataobject/data.store.png',
+    'ITSystem': 'dataobject/it.system.png',
+    'Message': 'dataobject/message.png',
+    'EndCancelEvent': 'endevent/cancel.png',
+    'EndCompensationEvent': 'endevent/compensation.png',
+    'EndErrorEvent': 'endevent/error.png',
+    'EndEscalationEvent': 'endevent/escalation.png',
+    'EndMultipleEvent': 'endevent/multiple.png',
+    'EndSignalEvent': 'endevent/signal.png',
+    'EndTerminateEvent': 'endevent/terminate.png',
+    'ComplexGateway': 'gateway/complex.png',
+    'EventbasedGateway': 'gateway/eventbased.png',
+    'Exclusive_Databased_Gateway': 'gateway/exclusive.databased.png',
+    'InclusiveGateway': 'gateway/inclusive.png',
+    'ParallelGateway': 'gateway/parallel.png',
+    'StartCompensationEvent': 'startevent/compensation.png',
+    'StartConditionalEvent': 'startevent/conditional.png',
+    'StartErrorEvent': 'startevent/error.png',
+    'StartEscalationEvent': 'startevent/escalation.png',
+    'StartMessageEvent': 'startevent/message.png',
+    'StartParallelMultipleEvent': 'startevent/multiple.parallel.png',
+    'StartMultipleEvent': 'startevent/multiple.png',
+    'StartNoneEvent': 'startevent/none.png',
+    'StartSignalEvent': 'startevent/signal.png',
+    'StartTimerEvent': 'startevent/timer.png',
+    'Lane': 'swimlane/lane.png',
+    'Pool': 'swimlane/pool.png',
+    'processparticipant': 'swimlane/process.participant.png',
+    'IntermediateCompensationEventThrowing': 'throwing/compensation.png',
+    'IntermediateEscalationEventThrowing': 'throwing/escalation.png',
+    'IntermediateLinkEventThrowing': 'throwing/link.png',
+    'IntermediateMessageEventThrowing': 'throwing/message.png',
+    'IntermediateMultipleEventThrowing': 'throwing/multiple.png',
+    'IntermediateEvent': 'throwing/none.png',
+    'IntermediateSignalEventThrowing': 'throwing/signal.png',
+}
+
+
+def get_icon(token_type: str) -> str:
+    """Get the icon path for a token type, matching legacy Bpm.php get_icon().
+
+    Args:
+        token_type: The BPMN element type (e.g., 'Task', 'EndNoneEvent')
+
+    Returns:
+        Full icon path string if found, empty string otherwise
+    """
+    return ICON_MAP.get(token_type, "")
+
+
+router = APIRouter(prefix="/bpm/case_manager", tags=["case-manager"])
 
 
 async def get_db():
@@ -155,34 +236,61 @@ async def get_token_status(
     result = await db.execute(stmt)
     tokens = result.scalars().all()
 
-    # Convert to Ext.js format with MongoDB-style _id and formatted dates
+    from app.models.user import User
+
+
+    # Convert to Ext.js format matching legacy Case_manager.php
     rows = []
     for token in tokens:
-        user_name = "admin"  # default
-        assigned_ids = token.assign or []
+        assigned_ids = getattr(token, 'assign', []) or []
         primary_uid = assigned_ids[0] if assigned_ids else None
 
+        # Get user nick (legacy uses $user->nick, not name)
+        user_nick = "admin"  # default
+        id_user = primary_uid or 0
         if primary_uid:
-            from app.models.user import User
-
             user_stmt = select(User).where(User.idu == primary_uid)
             user_result = await db.execute(user_stmt)
             user = user_result.scalar_one_or_none()
-            if user and hasattr(user, "name"):
-                user_name = user.name or "admin"
+            if user and hasattr(user, "nick"):
+                user_nick = user.nick or "admin"
+            elif user and hasattr(user, "name"):
+                user_nick = user.name or "admin"
+
+        # Get lockedBy user nick (legacy field)
+        locked_by_uid = getattr(token, 'locked_by', None)
+        locked_by_nick = None
+        if locked_by_uid:
+            lock_user_stmt = select(User).where(User.idu == locked_by_uid)
+            lock_user_result = await db.execute(lock_user_stmt)
+            lock_user = lock_user_result.scalar_one_or_none()
+            if lock_user and hasattr(lock_user, "nick"):
+                locked_by_nick = lock_user.nick
+
+        # Format date as MM/DD/YYYY (legacy dateFmt uses this format)
+        check_date_str = ""
+        token_check_date = getattr(token, 'checkdate', None) or getattr(token, 'updated_at', None)
+        if token_check_date:
+            check_date_str = token_check_date.strftime("%m/%d/%Y")
+
+        # Get icon based on token type (matches legacy $this->bpm->get_icon())
+        token_type = getattr(token, 'type', '') or ''
+        icon_path = get_icon(token_type) or f"{token_type}.png"
+        icon_html = f"<img src='/static/editor/stencilsets/bpmn2.0/icons/{icon_path}' />" if icon_path else ""
+
+        # Get title from name field (legacy: $token['title']=$token['name'])
+        token_title = getattr(token, 'name', '') or ''
 
         rows.append(
             {
-                "_id": {"$id": str(token.idtoken)},  # MongoDB-style _id with $id field
-                "id_token": token.idtoken,
-                "idwf": idwf,
-                "idcase": idcase,
-                "id_user": primary_uid or 0,
-                "name_user": user_name,
-                "status": token.status if hasattr(token, "status") else "open",
-                "checkdate": token.updated_at.strftime("%Y-%m-%d %H:%M:%S")
-                if hasattr(token, "updated_at") and token.updated_at
-                else "",
+                "_id": {"$id": str(getattr(token, 'idtoken', 0))},  # MongoDB-style _id with $id field
+                "iduser": id_user,
+                "lockedBy": locked_by_nick,
+                "user": user_nick,
+                "title": token_title,
+                "date": check_date_str,
+                "icon": icon_html,
+                "_class": getattr(token, '_class', 'Token'),
             }
         )
 

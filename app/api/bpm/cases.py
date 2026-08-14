@@ -335,6 +335,7 @@ async def get_token_status(
                 "user": user_nick,
                 "date": check_date_str,
                 "icon": icon_html,
+                "title": token_title,
             }
         )
 

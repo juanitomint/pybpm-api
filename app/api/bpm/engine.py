@@ -285,11 +285,7 @@ async def run(
 
             if handler_cls is not None:
                 instance = handler_cls()  # type: ignore[call-arg]
-                should_movenext = instance.handle(token, shape, service)  # type: ignore[misc]
-            else:
-                # No registered handler — fall back to movenext.
-                should_movenext = True
-
+                should_movenext = await instance.handle(token, shape, service)  # type: ignore[misc]
             if should_movenext:
                 await service.movenext(token.resource_id, idwf, idcase)
 

@@ -50,7 +50,7 @@ This document describes how to implement the BPM Model Repository CRUD API by po
 - [x] Make `get_model_service()` depend on `get_async_db()` so FastAPI resolves the chain correctly
 
 ### 3. Core Endpoints (CRUD)
-- [x] Step 1: PUT `/api/v1/bpm/repository/save/{idwf}` — save/update model + write SVG to disk
+- [x] Step 1: **POST** `/api/v1/bpm/repository/save` — save/update model via form fields (data JSON string + svg); idwf from decoded `$data->resourceId`; modificationdate = today midnight UTC. Returns 500 'No name defined<br>' when resourceId missing.
 - [x] Step 2: POST `/api/v1/bpm/repository/duplicate` — clone to new idwf
 - [x] Step 3: POST `/api/v1/bpm/repository/save_as` — save as new model with custom title (derived from `body.title`)
 - [x] Step 4: POST `/api/v1/bpm/repository/add/{idwf}` — create brand-new empty scaffold
@@ -107,7 +107,7 @@ All routes follow CodeIgniter convention: function name = first URL segment, par
 
 | # | PHP Method | Legacy URL Pattern | New Route (FastAPI) | Notes |
 |---|-----------|-------------------|---------------------|-------|
-| 1 | `save()` | `/repository/save` | **PUT** `/api/v1/bpm/repository/save/{idwf}` | idwf from path; data+svg in body. Legacy extracts `$idwf = $data->resourceId`. |
+| 1 | `save()` | `/repository/save` | **POST** `/api/v1/bpm/repository/save` | idwf from decoded `$data->resourceId`; data (JSON string) + svg in form fields. Returns 500 'No name defined<br>' when resourceId missing; modificationdate = today midnight UTC. Matches legacy PHP `Repository::save()`. |
 | 2 | `duplicate()` | `/repository/duplicate` | **POST** `/api/v1/bpm/repository/duplicate` | Both idwf + new_idwf in POST body. |
 | 3 | `save_as()` | `/repository/save_as` | **POST** `/api/v1/bpm/repository/save_as` | title from POST; data+svg in body. |
 | 4 | `add($new_idwf=null)` | `/repository/add/{idwf}` | **POST** `/api/v1/bpm/repository/add/{idwf}` | idwf optional in URL (legacy reads from POST if missing). Creates scaffold with defaults. |
@@ -179,18 +179,18 @@ class BpmModel(db.Model):
 Define request/response schemas in `repository_schemas.py`:
 
 - `ModelCreate` — for POST `/api/v1/models` (add endpoint): folder, idwf, name
-- `ModelUpdate` — for PUT with data + svg payload
+- `ModelUpdate` — Form data model for **POST** `/api/v1/bpm/repository/save`: `data` (JSON string of full Oryx model) required, `svg` (optional string). idwf is extracted client-side from `$data->resourceId`.
 - `ModelDuplicateRequest` — `{ "new_idwf": str }` (alias `"newIdwf"`)
 - `SaveAsRequest` — `{ "title": str, "data": dict, "svg": str | None }`
 - `FolderUpdate` — `{ "folder": str }`
 - `ScriptRequest` — `{ "script": str | None }` (ignored server-side)
-- `SaveModelRequest` — `{ "data": dict, "svg": str | None, "title": str | None }`
+- `SaveModelRequest` — Form data model for **POST** `/api/v1/bpm/repository/save_model/{idwf}`: `data` (JSON string of full Oryx model), optional `svg` (string) and `title` (str | None).
 - `ModelRead` — full model read response (idwf, folder, version, data, created_at, updated_at). **No `svg` field** — SVGs are served as separate file endpoints (`/svg/{idwf}`, `/thumbnail/{idwf}`).
 - `SaveResponse` — generic `{ "ok": bool, "msg": str }` used for most mutation responses.
 
 ---
 
-### Step 1: PUT `/api/v1/bpm/repository/save/{idwf}` — `save()`
+### Step 1: **POST** `/api/v1/bpm/repository/save` — `save()` (idwf from decoded `$data->resourceId`)
 
 **Legacy PHP:** `Repository::save()` at line 43–57
 ```php
@@ -201,27 +201,35 @@ $idwf = $data->resourceId;
 $this->bpm->save($idwf, $data, $svg);
 ```
 
-**New endpoint:** `PUT /api/v1/bpm/repository/save/{idwf}` — CodeIgniter convention: function name `save` is the route segment, `{idwf}` from path
-- Body: `{ "data": <dict>, "svg": <string> }`
-- Sets `properties.modificationdate = now()` in data dict
+**New endpoint:** `POST /api/v1/bpm/repository/save` — form fields: `data` (JSON string of full Oryx model) + optional `svg`. idwf is extracted server-side by decoding `$data->resourceId`. Sets `properties.modificationdate = today midnight UTC`. Returns **500** with body `No name defined<br>` when resourceId is missing — matches legacy PHP `Repository::save()` exactly.
+
+- Fields: `data=<JSON string of full Oryx model>` (required), `svg=<SVG content>` (optional)
+- Sets `properties.modificationdate = today midnight UTC` in decoded data dict
 - Calls service method that upserts model, increments version, writes SVG to disk
 
+**cURL example:**
+```bash
+curl -X POST http://localhost:8000/api/v1/bpm/repository/save \
+  --header "Authorization: Bearer $TOKEN" \
+  --form 'data={"resourceId":"mymodel","properties":{}}' \
+  --form 'svg=@/path/to/diagram.svg'
+```
+
 **Service logic:**
-1. Validate idwf exists or is creatable (auth check)
-2. Decode JSON body — extract `data` and `svg`
-3. Set `data["properties"]["modificationdate"] = ISO now()`
-4. Write `svg` content to `pybpm/static/svg/{idwf}.svg` (create dir if missing)
-5. Upsert into `bpm_models`: if exists, bump `version`, update `updated_at`; else create new row
-6. Return `ModelRead` with status 200 (update) or 201 (create)
+1. Decode form `data` field as JSON → `$data` object; extract `$idwf = $data->resourceId` — return **500** `'No name defined<br>'` if missing (matches legacy exactly)
+2. Validate model is creatable or updatable (auth check)
+3. Extract `svg` form field (optional)
+4. Set `$data->properties->modificationdate = today midnight UTC` (`YYYY-MM-DD` + `T00:00:00`)
+5. Write `svg` content to `pybpm/static/svg/{idwf}.svg` (create dir if missing)
+6. Upsert into `bpm_models`: if exists, bump `version`, update `updated_at`; else create new row
+7. Return `ModelRead` with status 200 (update) or 201 (create)
 
 **Tests:**
-- PUT existing model → version incremented, modificationdate set
-- PUT new model idwf → created with version=1
-- PUT without auth → 401
-- PUT invalid JSON body → 422
-- PUT model with missing `data` field → 400
-
----
+- POST existing model → version incremented, modificationdate set to today midnight UTC
+- POST new model idwf (via `$data->resourceId`) → created with version=1
+- POST without auth → 401
+- POST missing `resourceId` in decoded data → **500** `'No name defined<br>'`
+- POST invalid JSON form field → 422
 
 ### Step 2: POST `/api/v1/bpm/repository/duplicate` — `duplicate()`
 
@@ -827,8 +835,8 @@ uv run pytest tests/test_repository.py::test_save_existing_model -v
 1. **Check route registration:** `http://localhost:8000/openapi.json | jq '.paths | keys'` — all 17 routes should appear.
 2. **Test a single endpoint with curl:**
    ```bash
-   curl -X PUT http://localhost:8000/api/v1/bpm/repository/save/test_model \
-     -H "Authorization: Bearer <token>" \
+   curl -X POST http://localhost:5000/api/v1/bpm/repository/save \
+     -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" \
      -d '{"data": {"resourceId": "test_model"}, "svg": "<svg/>"}'
    ```

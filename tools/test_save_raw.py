@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
-"""Post the raw Oryx save payload (from files/raw/testo.raw) to /bpm/repository/save/{idwf}.
+"""Post the raw Oryx save payload (from files/raw/testo.raw) to /bpm/repository/save.
 
 Usage:
-    uv run python tools/test_save_raw.py [--url http://localhost:5000] [--idwf my-model-id]
+    uv run python tools/test_save_raw.py [--url http://localhost:5000]
 
 The script:
   1. Reads ``files/raw/testo.raw`` and URL-decodes its form fields.
   2. Logs in via POST /api/v1/auth/token with env vars ADMIN_USER / ADMIN_PASS
      (defaults to admin/admin).
-  3. PUTs the decoded payload as urlencoded form data to /bpm/repository/save/{idwf}
-     with a Bearer token from step 2.
+  3. Posts the decoded payload as JSON to /bpm/repository/save (idwf extracted from body.resourceId).
 """
-
 from __future__ import annotations
+
 
 import sys
 import urllib.parse
@@ -61,25 +60,15 @@ async def login(url: str, username: str, password: str) -> str | None:
             return None
         return resp.json()["access_token"]
 
-
 async def post_save(url: str, token: str, payload: dict[str, str]) -> httpx.Response:
-    """PUT the decoded raw payload to /bpm/repository/save/{idwf}."""
+    """Post the decoded raw payload as JSON to /bpm/repository/save."""
     import json as _json
 
-    data_field = payload.get("data", "{}")
-    try:
-        data_obj = (
-            _json.loads(data_field) if isinstance(data_field, str) else data_field
-        )
-        idwf = data_obj.get("resourceId", "unknown")
-    except (ValueError, TypeError):
-        idwf = "unknown"
-
-    url_path = f"{url}/bpm/repository/save/{urllib.parse.quote_plus(idwf)}"
+    url_path = f"{url}/api/v1/bpm/repository/save"
     async with httpx.AsyncClient() as client:
-        return await client.put(
+        return await client.post(
             url_path,
-            data=payload,
+            json=payload,
             headers={"Authorization": f"Bearer {token}"},
         )
 

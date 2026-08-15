@@ -5,7 +5,6 @@ lives inside a folder named after its module (`bpm`). The corresponding FastAPI
 file is `app/api/bpm/repository.py`.
 """
 
-from __future__ import annotations
 
 import copy as _copy_module
 import json
@@ -16,7 +15,7 @@ from pathlib import Path
 from typing import cast
 from urllib.parse import unquote_plus
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, status
 from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import CursorResult, select
 from sqlalchemy import delete as sa_delete
@@ -33,7 +32,6 @@ from app.schemas.repository import (
     ModelDeleteRequest,
     ModelDuplicateRequest,
     ModelRead,
-    ModelUpdate,
     OutputFormat,
     SaveAsRequest,
     SaveModelRequest,
@@ -66,17 +64,34 @@ def _strip_tags(html: str) -> str:
 # -- Step 1: save ------------------------------------------------------------- #
 
 
-@router.put("/save/{idwf}", response_model=ModelRead)
+@router.post("/save", response_model=ModelRead)
 async def save(
-    idwf: str,
-    body: ModelUpdate,
+    data: dict | str = Form(...),
+    svg: str | None = Form(default=None),
+    title: str | None = Form(default=None),
     user: User = Depends(get_current_user),
     service: ModelService = Depends(get_model_service),
 ):
-    """Save or update a model. Bumps version on update; writes SVG to disk."""
-    body.data.pop("_id", None)
+    """Save or update a model. Matches legacy PHP ``Repository::save()`` / ``save_as()`` —
+    form fields ``data`` (JSON string of the full Oryx model), optional ``svg``, and optional
+    ``title`` (acts as idwf override, mirroring save_as).
 
-    model, was_created = await service.save(idwf, body.data, svg=body.svg)
+    Sets ``properties.modificationdate`` to today midnight UTC. Extracts idwf from:
+    1. ``title`` form field if provided (save_as behavior — also sets resourceId on model data)
+    2. Decoded ``$data->resourceId`` otherwise
+    """
+    try:
+        model_data = json.loads(data) if isinstance(data, str) else data
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid JSON in 'data' field")
+
+    # idwf comes strictly from data.resourceId — title is editor metadata, ignored for storage.
+    idwf = model_data.get("resourceId") if isinstance(model_data, dict) else None
+
+    # Fresh modification date — legacy uses today's date at midnight UTC.
+    model_data.setdefault("properties", {})["modificationdate"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S")
+
+    model, was_created = await service.save(idwf, model_data, svg=svg)
     http_status = 201 if was_created else 200
     return JSONResponse(
         content=ModelRead.model_validate(model).model_dump(mode="json"),
@@ -599,7 +614,7 @@ def _find_shape(data: dict, resource_id: str) -> dict | None:
 # -- Step 15: import (zip upload + extract) ----------------------------------- #
 
 
-@router.post("/import")
+@router.post("/import", include_in_schema=False)
 async def import_zip(
     file: UploadFile,
     user: User = Depends(get_current_user),

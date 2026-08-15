@@ -2,6 +2,7 @@
 
 Mirrors legacy CodeIgniter structure: `modules/bpm/controllers/Repository.php`
 lives inside a folder named after its module (`bpm`). The corresponding FastAPI
+    return JSONResponse(content=data, status_code=200, headers=headers)
 file is `app/api/bpm/repository.py`.
 """
 
@@ -302,7 +303,6 @@ async def load(
     model: BpmModel | None = result.scalar_one_or_none()
     if model is None:
         raise HTTPException(status_code=404, detail=f"model '{idwf}' not found")
-
     data = model.data or {
         "resourceId": idwf,
         "stencilset": {
@@ -311,14 +311,17 @@ async def load(
         },
         "stencil": {"id": "BPMNDiagram"},
     }
+    if "stencilset" not in data:
+        data["stencilset"] = {
+            "url": "",
+            "namespace": "http://b3mn.org/stencilset/bpmn2.0#",
+        }
     data["stencilset"]["url"] = "static/editor/stencilsets/bpmn2.0/bpmn2.0_2.json"
     headers = {
         "Cache-Control": "no-store, no-cache, must-revalidate",
         "Pragma": "no-cache",
     }
-
     return JSONResponse(content=data, status_code=200, headers=headers)
-
 
 # -- Step 8: dump ------------------------------------------------------------- #
 

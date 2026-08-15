@@ -21,7 +21,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import CursorResult, select
 from sqlalchemy import delete as sa_delete
 
-from app.core.auth import get_current_user
+from app.api.auth import get_current_user
 from app.models.bpm_model import SVG_DIR, BpmModel
 from app.models.user import User
 from app.schemas.repository import (

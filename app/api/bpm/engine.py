@@ -22,7 +22,7 @@ import random
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy import select
 
-from app.core.auth import get_current_user
+from app.api.auth import get_current_user
 from app.models.bpm_model import BpmModel
 from app.models.case import BpmCase
 from app.models.token import Token

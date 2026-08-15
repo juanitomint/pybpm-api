@@ -118,6 +118,18 @@ uv run pytest
    uv run uvicorn main:app --reload
    ```
 
+### Testing (non-interactive)
+Use `APP_PORT=5001` when running the server for testing, scripting, or tooling — keeps it off port 5000 so `make run` can stay attached to an interactive console without conflict.
+
+```bash
+# Run on port 5001 (does not block make run / port 5000)
+APP_PORT=5001 uv run uvicorn main:app --host 0.0.0.0 --port 5001
+
+# Or via .env override:
+echo "APP_PORT=5001" >> .env && uv run uvicorn main:app --reload
+```
+
+When using `APP_PORT=5001`, point your clients (editor, UI, scripts) at `http://localhost:5001` instead of the default 5000.
 ## Linting & Formatting
 
 After making any code changes, always run:

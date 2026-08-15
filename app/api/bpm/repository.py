@@ -33,7 +33,6 @@ from app.schemas.repository import (
     ModelDuplicateRequest,
     ModelRead,
     OutputFormat,
-    SaveAsRequest,
     SaveModelRequest,
     SaveResponse,
     ScriptRequest,
@@ -131,47 +130,54 @@ async def duplicate(
 
 @router.post("/save_as", response_model=SaveResponse)
 async def save_as(
-    body: SaveAsRequest,
+    data: str = Form(...),
+    svg: str | None = Form(default=None),
+    title: str = Form(...),
     user: User = Depends(get_current_user),
     service: ModelService = Depends(get_model_service),
 ):
-    """Save a copy with a custom title/idwf (no version bump).
+    """Save a new model using the editor's 'save_as' contract.
 
-    ``title`` is the new model identifier — legacy PHP reads it from the POST
-    form field ``title``, not as a path parameter.
+    Matches legacy PHP ``Repository::save_as()`` — form fields ``data`` (JSON string of the
+    full Oryx model), optional ``svg``, and ``title`` acts as the new idwf. Sets
+    ``$data->resourceId = $idwf`` before persisting; returns 404 if a model with that idwf
+    already exists (legacy uses ``show_error('Name Already Exists', 404)``).
     """
-    idwf = body.title
-    data = _copy_module.deepcopy(body.data)
-    data.pop("_id", None)
-    data["resourceId"] = idwf
+    try:
+        model_data = json.loads(data) if isinstance(data, str) else data
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid JSON in 'data' field")
+
+    idwf = title or model_data.get("resourceId") if isinstance(model_data, dict) else None
+    if not idwf:
+        raise HTTPException(status_code=500, detail="No name defined<br>")
+
+    # save_as: override resourceId to match the new idwf (mirrors $data->resourceId = $idwf).
+    model_data["resourceId"] = idwf
 
     if await service.model_exists(idwf):
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"model '{idwf}' already exists",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Name Already Exists",
         )
 
     now = datetime.now(UTC)
-    data.setdefault("properties", {})["modificationdate"] = now.strftime(
-        "%Y-%m-%dT%H:%M:%S"
-    )
+    model_data.setdefault("properties", {})["modificationdate"] = now.strftime("%Y-%m-%dT%H:%M:%S")
 
-    if body.svg:
-        svg_dir = SVG_DIR
-        svg_dir.mkdir(parents=True, exist_ok=True)
-        (svg_dir / f"{idwf}.svg").write_text(body.svg, encoding="utf-8")
+    if svg:
+        SVG_DIR.mkdir(parents=True, exist_ok=True)
+        (SVG_DIR / f"{idwf}.svg").write_text(svg, encoding="utf-8")
 
     model = BpmModel(
         idwf=idwf,
         folder="General",
         version=0,
-        data=data,
+        data=model_data,
         created_at=now,
         updated_at=now,
     )
     service.db.add(model)
     await service.db.commit()
-
     return SaveResponse(ok=True, msg=f"saved as id: {idwf}")
 
 

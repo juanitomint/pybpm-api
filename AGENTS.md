@@ -130,6 +130,19 @@ echo "APP_PORT=5001" >> .env && uv run uvicorn main:app --reload
 ```
 
 When using `APP_PORT=5001`, point your clients (editor, UI, scripts) at `http://localhost:5001` instead of the default 5000.
+
+### ⚠️ CRITICAL — Port 5000 is the Dev Server
+**NEVER kill port 5000.** It runs your interactive `make run` server.
+Always use `APP_PORT=5001` (or another high port) for testing, scripting, or tooling.
+
+```bash
+# CORRECT — test on port 5001, dev server keeps running on 5000:
+APP_PORT=5001 uv run python -m main
+
+# WRONG — kills your dev server:
+fuser -k 5000/tcp   # NEVER do this unless explicitly cleaning up stale processes
+
+```
 ## Linting & Formatting
 
 After making any code changes, always run:

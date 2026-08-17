@@ -21,3 +21,7 @@ class User(Base):
     email: Mapped[str | None] = mapped_column(String(255))
     avatar: Mapped[bytes | None] = mapped_column(sa.LargeBinary())
     token: Mapped[str | None] = mapped_column(String(255), unique=True)
+    notification_by_email: Mapped[str | None] = mapped_column(
+        String(10), nullable=True,
+    )  # 'yes' or 'no' — used by inbox email notifications (legacy compat)
+    signature: Mapped[str | None] = mapped_column(sa.Text(), nullable=True)

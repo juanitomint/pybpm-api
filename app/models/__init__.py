@@ -1,6 +1,7 @@
 from app.models.bpm_model import BpmModel
 from app.models.case import BpmCase
 from app.models.group import Group
+from app.models.message import Message
 from app.models.permission_group import PermissionGroup
 from app.models.permission_repository import PermissionRepository
 from app.models.token import Token, TokenHistory
@@ -11,6 +12,7 @@ __all__ = [
     "BpmModel",
     "BpmCase",
     "Group",
+    "Message",
     "PermissionGroup",
     "PermissionRepository",
     "Token",

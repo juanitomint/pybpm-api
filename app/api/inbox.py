@@ -12,7 +12,6 @@ endpoints, adapted to RESTful conventions:
     GET    /api/v1/inbox/message/{msgid}/    — get single message (marks as read)
     PATCH  /api/v1/inbox/message/{msgid}/    — unified star/read/tag action
     POST   /api/v1/inbox/send/               — send message to user(s)
-    GET    /api/v1/inbox/new/                — compose form metadata
     DELETE /api/v1/inbox/message/{msgid}/    — delete message permanently
 """
 
@@ -33,7 +32,6 @@ from app.schemas.inbox import (
     MessageCounts,
     MessageOperationResponse,
     MessageRead,
-    NewMessageFormResponse,
     SendMessageRequest,
 )
 from app.services.inbox_service import InboxService
@@ -248,13 +246,6 @@ async def send(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
-
-@router.get("/new/", response_model=NewMessageFormResponse, status_code=status.HTTP_200_OK)
-async def new_msg(
-    user: User = Depends(get_current_user),
-):
-    """Compose form metadata — returns current user info for the send UI."""
-    return NewMessageFormResponse(current_user_id=user.idu)
 
 
 @router.delete(

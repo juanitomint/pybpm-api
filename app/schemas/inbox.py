@@ -112,9 +112,3 @@ class MessageOperationResponse(BaseModel):
     msg: str
     data: dict[str, Any] | None = None
 
-
-class NewMessageFormResponse(BaseModel):
-    """GET /inbox/new/ — compose form metadata (current user info + defaults)."""
-
-    current_user_id: int
-    default_subject: str = "No Subject"

@@ -86,8 +86,9 @@ def main():
     log_config = build_uvicorn_log_config()
     logging.config.dictConfig(log_config)
 
-    uvicorn.run(app, host="0.0.0.0", port=5000, log_config=log_config)
-
+    # Read port from APP_PORT env var, default to 5000 (per AGENTS.md testing guidance).
+    port = int(os.environ.get("APP_PORT", "5000"))
+    uvicorn.run(app, host="0.0.0.0", port=port, log_config=log_config)
 
 if __name__ == "__main__":
     main()

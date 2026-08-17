@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import get_current_user
 from app.models.user import User
 from app.schemas.inbox import (
+    FilterMessagesRequest,
     FolderMessagesRequest,
     FolderMessagesResponse,
     MessageActionRequest,
@@ -89,30 +90,28 @@ async def count_msgs(
 
 @router.post("/filter/", response_model=FolderMessagesResponse, status_code=status.HTTP_200_OK)
 async def show_msgs_by_filter(
-    body: FolderMessagesRequest = FolderMessagesRequest(),
+    body: FilterMessagesRequest = FilterMessagesRequest(),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(_get_db),
 ):
-    """Widget endpoint: search messages by free-text filter."""
-    if not body.filter_query:
-        return FolderMessagesResponse(messages=[], total_count=0, page=body.page, per_page=body.per_page, total_pages=0)
-
+    """Filter messages by key-value pairs (always scoped to current user)."""
     svc = InboxService(db)
-    rows, total_count = await svc.get_folder_messages(
+    rows = await svc.filter_messages(
         user_idu=user.idu,
-        folder=None,  # search across all folders
-        page=body.page,
-        per_page=body.per_page,
-        filter_query=body.filter_query,
+        folder=body.folder,
+        is_read=body.read,
+        is_starred=body.star,
+        tag=body.tag,
     )
-    return FolderMessagesResponse(
+    total_count = len(rows)
+    response = FolderMessagesResponse(
         messages=[MessageRead(**m) for m in rows],
         total_count=total_count,
-        page=body.page,
-        per_page=body.per_page,
-        total_pages=(total_count + body.per_page - 1) // body.per_page if body.per_page else 0,
+        page=1,
+        per_page=15,
+        total_pages=(total_count + 14) // 15 if total_count else 0,
     )
-
+    return response
 
 @router.get("/message/{msgid}/", response_model=MessageRead, status_code=status.HTTP_200_OK)
 async def get_msg(

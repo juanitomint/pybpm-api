@@ -116,6 +116,36 @@ class InboxService:
         result = await self.db.execute(query)
         rows = [self._message_to_dict(m) for m in result.scalars().all()]
         return rows, total_count
+    async def filter_messages(
+        self,
+        user_idu: int,
+        folder: str | None = None,
+        is_read: bool | None = None,
+        is_starred: bool | None = None,
+        tag: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return messages for ``user_idu`` filtered by the provided key-value pairs.
+
+        Each keyword argument that is not ``None`` becomes an AND condition.
+        Returns full message dicts (no pagination).
+        """
+        base = select(Message).where(Message.to_idu == user_idu)
+
+        if folder:
+            base = base.where(Message.folder == folder)
+
+        if is_read is not None:
+            base = base.where(Message.is_read == is_read)
+
+        if is_starred is not None:
+            base = base.where(Message.is_starred == is_starred)
+
+        if tag:
+            base = base.where(Message.tag == tag)
+
+        query = base.order_by(Message.checkdate.desc())
+        result = await self.db.execute(query)
+        return [self._message_to_dict(m) for m in result.scalars().all()]
 
     async def get_message_by_id(self, message_id: int, user_idu: int) -> Message | None:
         """Fetch a single message; must belong to ``user_idu``."""

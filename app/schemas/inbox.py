@@ -77,6 +77,17 @@ class FolderMessagesResponse(BaseModel):
     page: int = 1
     per_page: int = 15
     total_pages: int
+class FilterMessagesRequest(BaseModel):
+    """POST /inbox/filter/ — filter messages by key-value pairs.
+
+    Any subset of fields may be provided; ``None`` values are ignored.
+    Always scoped to the current user's inbox (``to_idu``).
+    """
+
+    folder: str | None = None
+    read: bool | None = None
+    star: bool | None = None
+    tag: str | None = None
 
 
 class MessageCounts(BaseModel):

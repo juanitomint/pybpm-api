@@ -76,37 +76,6 @@ async def index(
         total_pages=(total_count + per_page - 1) // per_page if per_page else 0,
     )
 
-
-@router.post(
-    "/folder/{folder}/", response_model=FolderMessagesResponse, status_code=status.HTTP_200_OK
-)
-async def get_folder(
-    folder: str,
-    body: FolderMessagesRequest = FolderMessagesRequest(),
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(_get_db),
-):
-    """Get paginated messages for a specific folder."""
-    if folder not in ("inbox", "star", "trash", "outbox"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid folder")
-
-    svc = InboxService(db)
-    rows, total_count = await svc.get_folder_messages(
-        user_idu=user.idu,
-        folder=folder,
-        page=body.page,
-        per_page=body.per_page,
-        filter_query=body.filter_query,
-    )
-    return FolderMessagesResponse(
-        messages=[MessageRead(**m) for m in rows],
-        total_count=total_count,
-        page=body.page,
-        per_page=body.per_page,
-        total_pages=(total_count + body.per_page - 1) // body.per_page if body.per_page else 0,
-    )
-
-
 @router.get("/counts/", response_model=MessageCounts, status_code=status.HTTP_200_OK)
 async def count_msgs(
     user: User = Depends(get_current_user),

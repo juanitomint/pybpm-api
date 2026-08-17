@@ -36,3 +36,7 @@ extend-ignore = [
     # C901: `_collect_shapes` and `_find_shape` are intentionally recursive BPMN walkers.
     "C901",
 ]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

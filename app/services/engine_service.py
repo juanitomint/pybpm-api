@@ -14,6 +14,7 @@ Key responsibilities:
 
 from collections.abc import Sequence
 from datetime import UTC, datetime
+import logging
 import sqlalchemy as sa
 from fastapi import Depends
 from sqlalchemy import select
@@ -113,6 +114,70 @@ class EngineService:
             run_count=token.run_count,
         )
         self.db.add(history)
+    async def _set_token_status(
+        self, idwf: str, case_id: str, resource_id: str, status_: str, data: dict | None = None
+    ) -> None:
+        """Update a token's status and/or external_data.
+
+        Looks up the token by (idwf, case_id, resourceId) — same lookup used by
+        ``get_token`` — then mutates its status and/or external_data columns.
+        Mirrors legacy ``updateToken()`` behavior where status changes are paired
+        with optional data transport on the same call.
+        """
+        token = await self.get_token(idwf, case_id, resource_id)
+        if not token:
+            return  # Token doesn't exist — silently skip (e.g., racing handler).
+
+        changed = False
+        if status_ is not None and token.status != status_:
+            token.status = status_
+            changed = True
+
+        if data is not None:
+            token.external_data = data
+            changed = True
+
+        if changed:
+            token.updated_at = datetime.now(UTC)
+            await self.db.flush()
+    # -- Event schedule management ------------------------------------------- #
+
+    async def _create_timer_event_schedule(
+        self,
+        case_id: str,
+        idwf: str,
+        resource_id: str,
+        trigger_time: datetime,
+        data_json: dict | None = None,
+        idu: int | None = None,
+    ) -> int:
+        """Create an event_schedules row for a timer event that entered 'waiting' state.
+
+        The scheduler polls this table to find events whose ``trigger_time`` has
+        arrived and fires them by advancing the corresponding waiting token.
+
+        Returns the new schedule's idschedule.
+        """
+        from app.models.event_schedule import EventSchedule as ScheduleModel
+
+        entry = ScheduleModel(
+            case_id=case_id,
+            idwf=idwf,
+            resource_id=resource_id,
+            trigger_time=trigger_time,
+            schedule_type="timer",
+            status="pending",
+            data_json=data_json or {},
+            idu=idu,
+        )
+        self.db.add(entry)
+        await self.db.flush()
+        logger = logging.getLogger(__name__)
+        logger.debug(
+            "Created event_schedule: type=timer resource=%s trigger=%s",
+            resource_id, trigger_time.isoformat(),
+        )
+        return entry.idschedule  # type: ignore[return-value]
 
     # -- Shape parent lookup & case close ------------------------------------ #
     async def get_shape_parent(self, resource_id: str, idwf: str) -> dict | None:

@@ -89,6 +89,17 @@ class FilterMessagesRequest(BaseModel):
     star: bool | None = None
     tag: str | None = None
 
+class CountFiltersRequest(BaseModel):
+    """POST /inbox/counts/ — filter counts by key-value pairs.
+
+    Any subset of fields may be provided; ``None`` values are ignored.
+    Always scoped to the current user's messages (``to_idu``).
+    """
+
+    folder: str | None = None
+    read: bool | None = None
+    star: bool | None = None
+    tag: str | None = None
 
 class MessageCounts(BaseModel):
     """GET /inbox/counts/ — folder and unread counts for the current user."""

@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import get_current_user
 from app.models.user import User
 from app.schemas.inbox import (
+    CountFiltersRequest,
     FilterMessagesRequest,
     FolderMessagesRequest,
     FolderMessagesResponse,
@@ -77,14 +78,21 @@ async def index(
         total_pages=(total_count + per_page - 1) // per_page if per_page else 0,
     )
 
-@router.get("/counts/", response_model=MessageCounts, status_code=status.HTTP_200_OK)
+@router.post("/counts/", response_model=MessageCounts, status_code=status.HTTP_200_OK)
 async def count_msgs(
+    body: CountFiltersRequest = CountFiltersRequest(),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(_get_db),
 ):
-    """Return message counts by folder and unread inbox messages."""
+    """Return message counts by folder, filtered by key-value pairs (always scoped to current user)."""
     svc = InboxService(db)
-    counts = await svc.count_messages(user_idu=user.idu)
+    counts = await svc.count_messages(
+        user_idu=user.idu,
+        folder=body.folder,
+        is_read=body.read,
+        is_starred=body.star,
+        tag=body.tag,
+    )
     return MessageCounts(**counts)
 
 

@@ -252,20 +252,58 @@ class InboxService:
 
     # -- Counts / toolbar ---------------------------------------------------- #
 
-    async def count_messages(self, user_idu: int) -> dict[str, int]:
-        """Return counts keyed by folder plus an ``unread_count`` for inbox."""
+    async def count_messages(
+        self,
+        user_idu: int,
+        folder: str | None = None,
+        is_read: bool | None = None,
+        is_starred: bool | None = None,
+        tag: str | None = None,
+    ) -> dict[str, int]:
+        """Return counts keyed by folder plus an ``unread_count`` for inbox.
+
+        Each keyword argument that is not ``None`` becomes an AND condition on every count query.
+        Always scoped to the current user's messages (``to_idu``).
+        """
+        def _base_query(extra_folder=None) -> Select:
+            q = select(func.count()).where(Message.to_idu == user_idu)
+            if isinstance(extra_folder, str):
+                # Per-folder iteration (e.g. "inbox", "star", "trash") overrides the kwarg.
+                folder_filter = extra_folder
+            elif extra_folder is not None:
+                # ClauseElement passed in directly (e.g. and_(...)) — apply it instead of folder kwarg.
+                q = q.where(extra_folder)
+                folder_filter = None
+            else:
+                folder_filter = folder
+            if folder_filter:
+                q = q.where(Message.folder == folder_filter)
+            if is_read is not None:
+                q = q.where(Message.is_read == is_read)
+            if is_starred is not None:
+                q = q.where(Message.is_starred == is_starred)
+            if tag:
+                q = q.where(Message.tag == tag)
+            return q
+
         counts: dict[str, int] = {}
         for fld in ("inbox", "star", "trash"):
-            q = select(func.count()).where(
-                and_(Message.to_idu == user_idu, Message.folder == fld)
-            )
-            counts[f"{fld}_count"] = (await self.db.execute(q)).scalar() or 0
-
+            counts[f"{fld}_count"] = (await self.db.execute(
+                _base_query(extra_folder=fld)
+            )).scalar() or 0
         sent_q = select(func.count()).where(Message.from_idu == user_idu)
+        if folder:
+            sent_q = sent_q.where(Message.folder == folder)
+        if is_read is not None:
+            sent_q = sent_q.where(Message.is_read == is_read)
+        if is_starred is not None:
+            sent_q = sent_q.where(Message.is_starred == is_starred)
+        if tag:
+            sent_q = sent_q.where(Message.tag == tag)
         counts["sent_count"] = (await self.db.execute(sent_q)).scalar() or 0
 
-        unread_q = select(func.count()).where(
-            and_(Message.to_idu == user_idu, Message.folder == "inbox", Message.is_read.is_(False))
+        unread_q = _base_query(
+            extra_folder=and_(Message.folder == "inbox", Message.is_read.is_(False))
         )
         counts["unread_count"] = (await self.db.execute(unread_q)).scalar() or 0
 

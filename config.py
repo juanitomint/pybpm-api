@@ -36,8 +36,7 @@ class Config:
     AUTODISCOVER_PATHS = as_bool(os.environ.get("AUTODISCOVER_PATHS", "false"))
 
     LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
-    LOG_FORMATTER = os.environ.get("LOG_FORMATTER", "")
-
+    CREATE_START_MSG = as_bool(os.environ.get("CREATE_START_MSG", "false"))
 
 class DevelopmentConfig(Config):
     DEBUG = True

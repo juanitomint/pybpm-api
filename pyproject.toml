@@ -10,6 +10,7 @@ dependencies = [
    "pydantic-settings>=2.4.0",   # Environment variable management via Pydantic v2
    "sqlalchemy[asyncio]>=2.0.0", # Async SQL Toolkit and Object-Relational Mapper
    "alembic>=1.13.0",            # Database migration tool configured for async
+   "apscheduler>=3.10.0",        # Background scheduler for event triggers and cron jobs
    "asyncpg>=0.29.0",            # Fast, async PostgreSQL driver (Change to aiomysql if using MySQL)
    "passlib[bcrypt]>=1.7.4",     # Secure password hashing for user/auth tasks
    "python-jose[cryptography]>=3.3.0", # JWT generation and validation

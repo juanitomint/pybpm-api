@@ -15,10 +15,10 @@ from __future__ import annotations
 from typing import Any
 
 import sqlalchemy as sa
-from sqlalchemy import select, text
+from sqlalchemy import select
+from datetime import UTC, datetime
 
 from app.api.bpm.engine import ENGINE_HANDLER_REGISTRY
-
 
 # -- Start event handlers ----------------------------------------------------- #
 
@@ -34,7 +34,7 @@ class StartNoneEventHandler:
     def stencil_id(cls) -> str:
         return "StartNoneEvent"
 
-    async def handle(self, token, shape, service):  # noqa: ANN001, D401
+    async def handle(self, token, shape, service):
         """Set case status to 'open' and move next."""
         idwf = token.idwf
         case_id = token.case_id
@@ -64,7 +64,7 @@ class StartMessageEventHandler:
     def stencil_id(cls) -> str:
         return "StartMessageEvent"
 
-    async def handle(self, token, shape, service):  # noqa: ANN001, D401
+    async def handle(self, token, shape, service):
         """Forward via movenext (deferred message catching logic)."""
         await service.movenext(token.resource_id, token.idwf, token.case_id)
         return False
@@ -81,7 +81,7 @@ class StartTimerEventHandler:
     def stencil_id(cls) -> str:
         return "StartTimerEvent"
 
-    async def handle(self, token, shape, service):  # noqa: ANN001, D401
+    async def handle(self, token, shape, service):
         """Forward via movenext (deferred timer logic)."""
         await service.movenext(token.resource_id, token.idwf, token.case_id)
         return False
@@ -113,7 +113,7 @@ class GenericStartEventHandler:
     def stencil_id(cls) -> str:
         return "_generic_start"  # sentinel; not used for dispatch
 
-    async def handle(self, token, shape, service):  # noqa: ANN001, D401
+    async def handle(self, token, shape, service):
         """Forward via movenext (no special start logic for these event types)."""
         await service.movenext(token.resource_id, token.idwf, token.case_id)
         return False
@@ -136,7 +136,7 @@ class EndNoneEventHandler:
     def stencil_id(cls) -> str:
         return "EndNoneEvent"
 
-    async def handle(self, token, shape, service):  # noqa: ANN001, D401
+    async def handle(self, token, shape, service):
         """Execute end-none logic: conditional movenext, parent bubble-up, case close."""
         idwf = token.idwf
         case_id = token.case_id
@@ -195,7 +195,6 @@ class EndNoneEventHandler:
         since we're inside the engine service already — no HTTP redirect needed.
         """
         # The parent case will be processed on its own engine.run() call from the API.
-        pass
 
 
 class EndMessageEventHandler:
@@ -211,7 +210,7 @@ class EndMessageEventHandler:
     def stencil_id(cls) -> str:
         return "EndMessageEvent"
 
-    async def handle(self, token, shape, service):  # noqa: ANN001, D401
+    async def handle(self, token, shape, service):
         """Defer signal throw + call end_none with moveForward=False."""
         idwf = token.idwf
         case_id = token.case_id
@@ -257,16 +256,35 @@ class _SignalThrowingEndHandler:
     def stencil_id(cls) -> str:
         return "_signal_throwing_end"  # sentinel; not used for dispatch
 
-    async def handle(self, token, shape, service):  # noqa: ANN001, D401
-        """Defer signal throw + standard end-none logic (moveForward=true)."""
+    async def handle(self, token, shape, service):
+        """Throw signal via SignalService then execute standard EndNoneEvent logic (moveForward=true)."""
         idwf = token.idwf
         case_id = token.case_id
         resource_id = token.resource_id
-
-        # IntermediateEventThrowing is deferred (no-op for v1).
+        props = shape.get("properties") or {}
+        
+        # Extract signal name from shape properties (legacy PHP uses $shape->properties->name as signal identifier).
+        signal_name = props.get("name", "")
+        if signal_name:
+            try:
+                from app.services.signal_service import SignalService
+                
+                signal_svc = SignalService(service.db)  # type: ignore[arg-type]
+                await signal_svc.throw_signal(
+                    name=signal_name,
+                    idwf=idwf,
+                    case_id=case_id,
+                    data={},  # signals can carry payload; v1 leaves it empty
+                )
+            except Exception as exc:
+                logger.warning(
+                    "SignalThrowingEndHandler: failed to throw signal %s: %s",
+                    signal_name, exc,
+                )
+        
         # Standard EndNoneEvent logic with moveForward=True.
         await service.movenext(resource_id, idwf, case_id)
-
+        
         parent_shape = await service.get_shape_parent(resource_id, idwf)
         if parent_shape is not None:
             parent_stencil = (parent_shape.get("stencil") or {}).get("id", "")
@@ -274,7 +292,7 @@ class _SignalThrowingEndHandler:
                 await service.movenext(
                     parent_shape.get("resourceId", ""), idwf, case_id
                 )
-
+        
         await service.close_case_if_empty(idwf, case_id)
         return False
 
@@ -292,7 +310,7 @@ class EndErrorEventHandler:
     def stencil_id(cls) -> str:
         return "EndErrorEvent"
 
-    async def handle(self, token, shape, service):  # noqa: ANN001, D401
+    async def handle(self, token, shape, service):
         """Defer signal throw + set case status to 'canceled'."""
         idwf = token.idwf
         case_id = token.case_id
@@ -321,7 +339,7 @@ class EndCancelEventHandler:
     def stencil_id(cls) -> str:
         return "EndCancelEvent"
 
-    async def handle(self, token, shape, service):  # noqa: ANN001, D401
+    async def handle(self, token, shape, service):
         """Call movenext, then set break_on_next flag on the engine service."""
         await service.movenext(token.resource_id, token.idwf, token.case_id)
         # Set flag so the run loop breaks after this iteration.
@@ -344,12 +362,47 @@ class EndTerminateEventHandler:
     def stencil_id(cls) -> str:
         return "EndTerminateEvent"
 
-    async def handle(self, token, shape, service):  # noqa: ANN001, D401
-        """TODO: full terminate logic — for now set break_on_next flag."""
-        if hasattr(service, "break_on_next"):
-            service.break_on_next = True  # type: ignore[attr-defined]
+    async def handle(self, token, shape, service):
+        """Cancel all active tokens and mark the case as terminated.
 
-        # TODO (Phase X): cancel all active tokens and archive/delete case.
+        Mirrors legacy ``run_EndTerminateEvent()`` (start_end_helper.php:249-277):
+         - cancel every active token (user/waiting/pending/open) with terminate metadata,
+         - archive the case row (skipped here — no BpmCaseArchive table yet),
+         - delete the case from live tables.
+
+        For v1 compat: we mark the case status 'terminated' and cancel tokens but keep
+        the case row for audit purposes; full deletion/archival is a follow-up.
+        """
+        from app.models.case import BpmCase
+        from app.models.token import Token as _Token
+
+        idwf = token.idwf
+        case_id = token.case_id
+        cancel_data = {
+            "canceledBy": shape.get("resourceId", ""),
+            "canceledName": (shape.get("properties") or {}).get("name", ""),
+        }
+
+        # 1. Cancel every active token for this case.
+        stmt = sa.select(_Token).where(
+            _Token.idwf == idwf,
+            _Token.case_id == case_id,
+            _Token.status.in_(["user", "waiting", "pending", "open"]),
+        )
+        result = await service.db.execute(stmt)  # type: ignore[misc]
+        active_tokens = result.scalars().all()
+        for t in active_tokens:
+            if t.status != "canceled":
+                t.status = "canceled"
+                t.external_data = cancel_data
+                t.updated_at = datetime.now(UTC)
+        await service.db.flush()
+
+        # 2. Mark case as terminated (archive/delete is deferred — no archive table yet).
+        update_stmt = sa.update(BpmCase).where(
+            BpmCase.idcase == case_id, BpmCase.idwf == idwf
+        ).values(status="terminated")
+        await service.db.execute(update_stmt)  # type: ignore[misc]
         return False
 
 

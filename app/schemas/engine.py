@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+
 # -- Request Schemas ----------------------------------------------------------- #
 
 
@@ -74,17 +75,15 @@ class StartResponse(BaseModel):
 class RunRequest(BaseModel):
     """POST /api/v1/bpm/engine/run — execute the engine loop for a case.
 
-    Ported from legacy ``Engine::Run($model, $idwf, $case, $run_resourceId, $silent)``.
-    ``idwf``, ``idcase``, and ``run_resource_id`` are path segments; this schema
-    carries the optional body fields only (``silent``).
+    The legacy ``Engine::Run()`` method was called automatically by CodeIgniter's
+    redirect after Startcase(). In pybpm-api we make it explicit: clients POST to
+    this endpoint to drive the engine forward one tick.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    silent: bool | None = Field(
-        default=None,
-        description="When true, suppress debug output and inbox notifications.",
-    )
+    idwf: str = Field(..., description="Workflow (model) identifier.")
+    idcase: str = Field(..., description="Case instance identifier.")
 
 
 class RunResponse(BaseModel):
@@ -100,23 +99,22 @@ class RunResponse(BaseModel):
 class PostRequest(BaseModel):
     """POST /api/v1/bpm/engine/post/{token_id} — external webhook callback.
 
-    Ported from legacy ``Engine::post($token_id, $external_origin, $external_id)``.
-    The token ID comes from the URL path; this schema carries the remaining
-    fields that the caller supplies in the body.
+    Used when an external system sends data back to the engine (e.g., after a
+    Send Task dispatched a message and the receiver replied). The payload is
+    stored on the case record under ``data['external'][origin][resourceId]`` so
+    downstream handlers can read it.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     external_origin: str = Field(
-        ..., description="Origin of the external event (e.g., 'email', 'webhook')."
+        ..., description="Origin label for the external data bucket (e.g., 'inbox', 'webhook')."
     )
     external_id: str | None = Field(
-        default=None,
-        description="Optional ID associated with this external origin.",
+        default=None, description="Identifier of the external resource (message ID, webhook reference)."
     )
-    data: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Arbitrary payload to persist on the token's external_data.",
+    data: dict[str, Any] | None = Field(
+        default=None, description="Optional payload merged into case.data under data[external_origin][resourceId]."
     )
 
 
@@ -133,19 +131,16 @@ class PostResponse(BaseModel):
 class AssignRequest(BaseModel):
     """POST /api/v1/bpm/engine/assign — assign a task to one or more users.
 
-    Ported from legacy ``Engine::assign($model, $idwf, $idcase, $src_resourceId, $resourceId, $idu)``.
+    Mirrors legacy ``Engine::assign()`` which updates the token's assignment list
+    and records history. Used by pybpm-ui to route work items to specific users.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     idwf: str = Field(..., description="Workflow (model) identifier.")
-    idcase: str = Field(..., description="Case identifier to assign the task on.")
-    src_resource_id: str = Field(
-        ..., alias="srcResourceId", description="Source shape resource ID."
-    )
+    idcase: str = Field(..., description="Case instance identifier.")
     resource_id: str = Field(
         ...,
-        alias="resourceId",
         description="Target shape resource ID (the task).",
     )
     user_ids: list[int] = Field(
@@ -160,3 +155,65 @@ class AssignResponse(BaseModel):
 
     ok: bool = True
     msg: str = "Task assigned successfully"
+
+
+# -- Gate Decision Request/Response -------------------------------------------- #
+# (Priority 3: manual gateway completion endpoint)
+
+
+class GateDecisionRequest(BaseModel):
+    """POST /api/v1/bpm/engine/gate/{idwf}/{idcase}/{resource_id} — choose an outgoing flow from a manual gate.
+
+    Mirrors legacy ``Engine::run_gate()`` which is called when the user clicks one
+    of the gate's output buttons in pybpm-ui. The body carries the resourceId of
+    the chosen SequenceFlow so the engine can mark the gate finished and advance
+    along that specific outgoing edge (instead of moving all of them).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    flow_resource_id: str = Field(
+        ..., description="Resource ID of the outgoing SequenceFlow the user selected."
+    )
+
+
+class GateResponse(BaseModel):
+    """Response after processing a manual gate decision."""
+
+    ok: bool = True
+    msg: str = "Gate decision recorded"
+
+
+# -- Task Complete Request/Response -------------------------------------------- #
+# (Priority 3: manual task completion endpoint)
+
+
+class TaskCompleteRequest(BaseModel):
+    """POST /api/v1/bpm/engine/task/{idwf}/{idcase}/{resource_id} — submit data and complete a manual task.
+
+    Mirrors legacy ``Engine::manual_task()`` behavior: the user fills out form
+    fields on pybpm-ui's manual-task modal, then POSTs here to mark the token as
+    finished so movenext can advance along the outgoing flow(s). Any submitted
+    data is merged into case.data for downstream shapes to read.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    data: dict[str, Any] | None = Field(
+        default=None, description="Optional user-submitted form data merged into case.data."
+    )
+
+    action: str = Field(
+        default="complete",
+        description=(
+            "Action to perform. 'complete' marks the task finished and advances; "
+            "'skip' skips without marking complete (rarely used)."
+        ),
+    )
+
+
+class TaskCompleteResponse(BaseModel):
+    """Response after completing a manual task."""
+
+    ok: bool = True
+    msg: str = "Task completed successfully"

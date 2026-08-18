@@ -42,25 +42,35 @@ class ParallelGatewayHandler:
         idwf = token.idwf
         case_id = token.case_id
         resource_id = token.resource_id
-
+        
         inbound = await service.get_previous(resource_id, idwf)
-
+        
         has_all_finished = True
         for in_shape in inbound:
             in_rid = in_shape.get("resourceId") or in_shape.get("id", "")
             if not in_rid:
                 continue
+            
+            # Check if token exists for this inbound shape
             in_token = await service.get_token(idwf, case_id, in_rid)
-            if in_token and getattr(in_token, "status", None) != "finished":
+            
+            # If no token exists yet (not created), gateway must wait
+            if not in_token:
                 has_all_finished = False
                 break
-
+            
+            # Check token status
+            status = getattr(in_token, "status", None)
+            if status != "finished":
+                has_all_finished = False
+                break
+        
         if has_all_finished:
             await service.movenext(resource_id, idwf, case_id)
             return False
         else:
             from app.models.token import Token as TokenModel
-
+            
             update_stmt = sa.update(TokenModel).where(
                 TokenModel.idwf == idwf,
                 TokenModel.case_id == case_id,

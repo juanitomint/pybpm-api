@@ -11,6 +11,7 @@ from app.handlers import *  # noqa: F401,F403  # triggers handler registration a
 from app.api.bpm.repository import router as bpm_router
 from app.api.bpm.tokens import router as token_manager_router
 from app.api.inbox import router as inbox_router
+from app.api.bpm.event_schedule import router as event_schedule_router
 from app.core.logging import build_uvicorn_log_config
 
 SVG_DIR = "static/svg"
@@ -71,6 +72,7 @@ app.include_router(engine_router)
 app.include_router(cases_router)
 app.include_router(token_manager_router)
 app.include_router(inbox_router)  # TEMP DISABLED
+app.include_router(event_schedule_router)
 
 _patch_openapi()
 
@@ -82,13 +84,21 @@ async def root():
 
 def main():
     import uvicorn
-
+    from app.core.scheduler import start_scheduler, stop_scheduler
+    
     log_config = build_uvicorn_log_config()
     logging.config.dictConfig(log_config)
-
+    
     # Read port from APP_PORT env var, default to 5000 (per AGENTS.md testing guidance).
     port = int(os.environ.get("APP_PORT", "5000"))
-    uvicorn.run(app, host="0.0.0.0", port=port, log_config=log_config)
+    
+    # Start background scheduler for event schedule dispatch.
+    start_scheduler(app)
+    
+    try:
+        uvicorn.run(app, host="0.0.0.0", port=port, log_config=log_config)
+    finally:
+        stop_scheduler(app)
 
 if __name__ == "__main__":
     main()

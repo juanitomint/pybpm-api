@@ -18,7 +18,8 @@ from typing import Any
 import sqlalchemy as sa
 
 from app.api.bpm.engine import ENGINE_HANDLER_REGISTRY
-from app.handlers.flow import _safe_eval
+from app.handlers.eval_context import DataStorage, build_script_namespace
+from app.handlers.flow import _eval_script
 
 
 class TaskHandler:
@@ -162,8 +163,7 @@ class TaskHandler:
             script_str = props.get("script", "")
             operationref = props.get("operationref") or props.get("name", "result")
             if script_str:
-                result = _safe_eval(script_str, transport_data)
-                # Fetch current case data, merge in new result, write back.
+                # Fetch current case data so scripts can read it via `ds`.
                 from app.models.case import BpmCase
 
                 fetch_stmt = sa.select(BpmCase.data).where(
@@ -173,7 +173,19 @@ class TaskHandler:
                 current_data = current_data.scalar_one_or_none() or {}
                 if not isinstance(current_data, dict):
                     current_data = {}
-                new_data = {**current_data, operationref: result}
+
+                # Build execution namespace with ds + identifiers.
+                ns = build_script_namespace(token, current_data, transport_data)
+
+                # Evaluate script; _eval_script returns raw value (not coerced to bool).
+                result = _eval_script(script_str, ns)
+
+                # Sync any mutations the script made via `ds` back into case data.
+                ds_payload: dict[str, Any] = {}
+                ds_obj = ns.get("ds")
+                if isinstance(ds_obj, DataStorage):
+                    ds_payload = ds_obj._data
+                new_data = {**current_data, operationref: result, **ds_payload}
                 update_stmt = sa.update(BpmCase).where(
                     BpmCase.idcase == case_id, BpmCase.idwf == idwf,
                 ).values(data=new_data)

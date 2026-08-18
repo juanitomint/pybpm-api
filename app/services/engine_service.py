@@ -12,16 +12,18 @@ Key responsibilities:
 - Signal/trigger/subprocess handling (deferred)
 """
 
+import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
-import logging
+
 import sqlalchemy as sa
 from fastapi import Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from extensions import get_async_db
+
 from app.models.bpm_model import BpmModel
 from app.models.token import Token, TokenHistory
+from extensions import get_async_db
 
 
 class EngineService:
@@ -140,6 +142,103 @@ class EngineService:
         if changed:
             token.updated_at = datetime.now(UTC)
             await self.db.flush()
+    async def _check_token_finished(
+        self, idwf: str, case_id: str, resource_id: str
+    ) -> bool:
+        """Return True if a token is finished (or doesn't exist).
+
+        Used by boundary-event logic to decide whether the parent activity has
+        completed before canceling or advancing. Mirrors legacy PHP's check on
+        ``$token['status'] !== 'finished'``.
+        """
+        from app.models.token import Token as _Token  # lazy import
+
+        stmt = sa.select(_Token).where(
+            _Token.idwf == idwf,
+            _Token.case_id == case_id,
+            _Token.resource_id == resource_id,
+        )
+        result = await self.db.execute(stmt)  # type: ignore[misc]
+        token = result.scalar_one_or_none()
+        return token is not None and token.status == "finished"
+
+    async def _cancel_subprocess_children(
+        self, resource_id: str, idwf: str, case_id: str
+    ) -> int:
+        """Cancel all non-finished tokens inside a Subprocess container shape.
+
+        Walks the model data under ``childShapes`` / ``shapes`` of the given
+        resourceId to find descendant shapes, then marks their tokens as
+        'canceled' with cancel metadata. Recurses into nested Subprocess /
+        CollapsedSubprocess children so deeply-nested token trees are fully
+        cleared. Returns count of canceled tokens.
+
+        Mirrors legacy ``run_IntermediateEventCatching()`` L307-316 plus the
+        TODO-dive-deeper comment for nested subprocesses.
+        """
+        from app.models.bpm_model import BpmModel as _BpmModel
+
+        stmt = sa.select(_BpmModel.data).where(_BpmModel.idwf == idwf)
+        result = await self.db.execute(stmt)  # type: ignore[misc]
+        model_data = result.scalar_one_or_none()
+        if not isinstance(model_data, dict):
+            return 0
+
+        canceled_count = 0
+
+        async def _cancel_descendants(node: dict) -> None:
+            nonlocal canceled_count
+            for key in ("childShapes", "shapes"):
+                children = node.get(key, []) or []
+                if not isinstance(children, list):
+                    continue
+                for child in children:
+                    if not isinstance(child, dict):
+                        continue
+                    rid = child.get("resourceId") or child.get("id", "")
+                    if not rid:
+                        continue
+                    token = await self.get_token(idwf, case_id, rid)
+                    if token and token.status != "finished":
+                        cancel_data = {
+                            "canceledBy": resource_id,
+                            "canceledName": (
+                                (child.get("properties") or {}).get(
+                                    "name", ""
+                                )
+                            ),
+                        }
+                        await self._set_token_status(
+                            idwf, case_id, rid, "canceled", data=cancel_data
+                        )
+                        canceled_count += 1
+                    child_stencil = (child.get("stencil") or {}).get("id", "")
+                    if child_stencil in ("Subprocess", "CollapsedSubprocess"):
+                        await _cancel_descendants(child)
+
+        def _find_container(node: dict, target_rid: str) -> dict | None:
+            if not isinstance(node, dict):
+                return None
+            for key in ("childShapes", "shapes"):
+                children = node.get(key, []) or []
+                if not isinstance(children, list):
+                    continue
+                for child in children:
+                    if not isinstance(child, dict):
+                        continue
+                    rid = child.get("resourceId") or child.get("id", "")
+                    if rid == target_rid:
+                        return node
+                    found = _find_container(child, target_rid)
+                    if found is not None:
+                        return found
+            return None
+
+        container = _find_container(model_data, resource_id)
+        if container:
+            await _cancel_descendants(container)
+
+        return canceled_count
     # -- Event schedule management ------------------------------------------- #
 
     async def _create_timer_event_schedule(
@@ -178,8 +277,41 @@ class EngineService:
             resource_id, trigger_time.isoformat(),
         )
         return entry.idschedule  # type: ignore[return-value]
-
-    # -- Shape parent lookup & case close ------------------------------------ #
+    async def _create_signal_event_schedule(
+        self,
+        case_id: str,
+        idwf: str,
+        resource_id: str,
+        signal_name: str,
+        data_json: dict | None = None,
+        idu: int | None = None,
+    ) -> int:
+        """Create an event_schedules row for a signal catch event that entered 'waiting' state.
+        
+        The scheduler polls this table to find pending signal schedules and fires them when matching signals exist.
+        
+        Returns the new schedule's idschedule.
+        """
+        from app.models.event_schedule import EventSchedule as ScheduleModel
+        
+        entry = ScheduleModel(
+            case_id=case_id,
+            idwf=idwf,
+            resource_id=resource_id,
+            trigger_time=datetime.now(UTC),  # Signal schedules don't have a future time; they fire when signal arrives.
+            schedule_type="signal",
+            status="pending",
+            data_json=data_json or {"name": signal_name},
+            idu=idu,
+        )
+        self.db.add(entry)
+        await self.db.flush()
+        logger = logging.getLogger(__name__)
+        logger.debug(
+            "Created event_schedule: type=signal resource=%s name='%s'",
+            resource_id, signal_name,
+        )
+        return entry.idschedule  # type: ignore[return-value]
     async def get_shape_parent(self, resource_id: str, idwf: str) -> dict | None:
         """Find the container parent shape of a given shape in the model tree.
 

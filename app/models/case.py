@@ -45,6 +45,8 @@ class BpmCase(Base):
         "parent",
         sa.JSON(),  # legacy used a JSON blob; keep column name for clarity
     )
+    closer: Mapped[str | None] = mapped_column(String(1024))
+    checkoutdate: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

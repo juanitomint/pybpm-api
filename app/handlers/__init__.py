@@ -13,3 +13,17 @@ from app.handlers.start_end import (  # noqa: F401
     EndCancelEventHandler,
     EndTerminateEventHandler,
 )
+from app.handlers.task import TaskHandler  # noqa: F401
+from app.handlers.gate import (  # noqa: F401
+    ParallelGatewayHandler,
+    ExclusiveDatabasedGatewayHandler,
+)
+from app.handlers.subproc import CollapsedSubprocessHandler  # noqa: F401
+from app.handlers.event import (  # noqa: F401
+    IntermediateTimerEventHandler,
+    IntermediateMessageEventCatchingHandler,
+    IntermediateSignalEventCatchingHandler,
+    IntermediateErrorEventHandler,
+    IntermediateConditionalEventHandler,
+    IntermediateLinkEventCatchingHandler,
+)

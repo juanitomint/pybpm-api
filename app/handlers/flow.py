@@ -27,10 +27,27 @@ def _safe_eval(expression: str, context: dict[str, Any] | None = None) -> bool:
         tree = ast.parse(expression.strip(), mode="eval")
         code = compile(tree, "<condition>", "eval")
         local_ns = dict(context) if context else {}
-        result = eval(code, {"__builtins__": {}}, local_ns)  # noqa: S307
+        result = eval(code, {"__builtins__": {}}, local_ns)
         return bool(result)
     except Exception:
         return False
+
+def _eval_script(expression: str, context: dict[str, Any] | None = None) -> Any:
+    """Evaluate a Python expression and return the raw value.
+
+    Same AST-parsing sandbox as ``_safe_eval`` but does **not** coerce to bool —
+    scripts can return ints, strings, dicts, etc. Raises are treated as falsy
+    (returns None) to match PHP's warning-and-continue behavior.
+    """
+    if not expression or not expression.strip():
+        return None
+    try:
+        tree = ast.parse(expression.strip(), mode="eval")
+        code = compile(tree, "<script>", "eval")
+        local_ns = dict(context) if context else {}
+        return eval(code, {"__builtins__": {}}, local_ns)
+    except Exception:
+        return None
 
 
 class SequenceFlowHandler:
@@ -45,7 +62,7 @@ class SequenceFlowHandler:
     def stencil_id(cls) -> str:
         return "SequenceFlow"
 
-    async def handle(self, token, shape, service):  # noqa: ANN001, D401
+    async def handle(self, token, shape, service):
         """Execute SequenceFlow logic: collect data, evaluate condition, movenext or stop."""
         idwf = token.idwf
         case_id = token.case_id
@@ -116,7 +133,7 @@ class MessageFlowHandler:
     def stencil_id(cls) -> str:
         return "MessageFlow"
 
-    async def handle(self, token, shape, service):  # noqa: ANN001, D401
+    async def handle(self, token, shape, service):
         """Execute MessageFlow logic: advance catching events, then movenext."""
         idwf = token.idwf
         case_id = token.case_id

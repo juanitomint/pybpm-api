@@ -31,6 +31,8 @@ from app.schemas.engine import (
     AssignRequest,
     AssignResponse,
     CaseCreated,
+    GateDecisionRequest,
+    GateResponse,
     NewcaseRequest,
     PostRequest,
     PostResponse,
@@ -38,6 +40,8 @@ from app.schemas.engine import (
     RunResponse,
     StartRequest,
     StartResponse,
+    TaskCompleteRequest,
+    TaskCompleteResponse,
 )
 from app.services.engine_service import EngineService, get_engine_service
 
@@ -245,6 +249,31 @@ async def start(
         idcase=body.idcase,
         tokens_created=tokens_created,
     )
+    
+    # Create inbox message on case start (mirrors legacy $create_start_msg flag).
+    try:
+        from config import Config
+        
+        create_start_msg = getattr(Config, "CREATE_START_MSG", False)
+        if create_start_msg:
+            model_data = model_row.data or {}
+            properties = model_data.get("properties") or {}
+            model_name = properties.get("name", body.idwf)
+            documentation = properties.get("documentation", "")
+            
+            # Build inbox message payload (mirrors legacy $msg array).
+            from app.services.inbox_service import InboxService, get_async_db as _get_async_db
+            
+            async with _get_async_db() as inbox_db:
+                inbox_svc = InboxService(inbox_db)  # type: ignore[arg-type]
+                await inbox_svc.send_message(
+                    sender_idu=user.idu,
+                    recipient_idu=user.idu,  # self-message (legacy uses session user ID as both from/to)
+                    subject=f"{model_name}:{body.idcase}",
+                    body=documentation or f"Case {body.idcase} started for model {body.idwf}",
+                )
+    except Exception as exc:
+        logger.warning("Engine start: failed to create inbox message: %s", exc)
 
 
 # -- run ---------------------------------------------------------------------- #
@@ -465,6 +494,158 @@ async def assign(
         await service.db.commit()
 
     return AssignResponse(ok=True, msg="Task assigned successfully")
+
+
+# -- Gate Decision (Priority 3) ------------------------------------------------ #
+
+
+@router.post(
+    "/gate/{idwf}/{idcase}/{resource_id}",
+    response_model=GateResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def gate_decision(
+    idwf: str,
+    idcase: str,
+    resource_id: str,
+    body: GateDecisionRequest,
+    service: EngineService = Depends(get_engine_service),
+    user: User = Depends(get_current_user),
+) -> GateResponse:
+    """Handle a manual gateway decision — mirrors legacy ``Engine::run_gate()`` (Engine.php:428-478).
+
+    When pybpm-ui renders an Exclusive_Databased_Gateway with multiple outgoing flows,
+    the user picks one by clicking its button. This endpoint receives that choice and:
+      1. Marks the gate shape's token as 'finished' (incrementing run count).
+      2. Records a TokenHistory row with the chosen flow's resourceId and current user.
+      3. Calls ``movenext()`` on the *specific* outgoing SequenceFlow the user selected,
+         rather than advancing all of them (which would happen with a normal movenext).
+    """
+    # Load the shape for this gate resource_id
+    shape = await service.get_shape(resource_id, idwf)
+    if not shape:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Shape {resource_id} does not exist on model {idwf}",
+        )
+
+    # Fetch the current token for this gate
+    token = await service.get_token(idwf, idcase, resource_id)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No active token found for shape {resource_id} in case {idcase}",
+        )
+
+    if token.status == "finished":
+        return GateResponse(ok=True, msg="Gate already finished")
+
+    # Mark gate as finished (mirrors PHP L449-452)
+    from datetime import UTC, datetime
+
+    token.status = "finished"
+    token.run_count = (token.run_count or 0) + 1
+    token.check_date = datetime.now(UTC)
+    await service.db.flush()
+
+    # Record history row (mirrors PHP L456-466)
+    from app.models.token import TokenHistory
+
+    history = TokenHistory(
+        idwf=idwf,
+        case_id=idcase,
+        resource_id=resource_id,
+        type=shape.get("stencil", {}).get("id", "Exclusive_Databased_Gateway"),
+        status="finished",
+        check_date=datetime.now(UTC),
+        run_count=token.run_count or 0,
+        name=(shape.get("properties") or {}).get("name", ""),
+    )
+    service.db.add(history)
+    await service.db.flush()
+
+    # Get the chosen outgoing flow shape and movenext on it (mirrors PHP L467-469)
+    from sqlalchemy import select as sa_select
+
+    flow_shape = await service.get_shape(body.flow_resource_id, idwf)
+    if not flow_shape:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Selected flow {body.flow_resource_id} does not exist on model {idwf}",
+        )
+
+    await service.movenext(body.flow_resource_id, idwf, idcase)
+
+    return GateResponse(ok=True, msg="Gate decision recorded")
+
+
+# -- Task Complete (Priority 3) ------------------------------------------------ #
+
+
+@router.post(
+    "/task/{idwf}/{idcase}/{resource_id}",
+    response_model=TaskCompleteResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def task_complete(
+    idwf: str,
+    idcase: str,
+    resource_id: str,
+    body: TaskCompleteRequest,
+    service: EngineService = Depends(get_engine_service),
+    user: User = Depends(get_current_user),
+) -> TaskCompleteResponse:
+    """Handle manual task completion — mirrors legacy ``Engine::manual_task()`` behavior.
+
+    When pybpm-ui renders a User/Manual task, the user fills out form fields and clicks
+    complete. This endpoint:
+      1. Validates the token exists and is in 'user' status (waiting for manual input).
+      2. Optionally merges submitted data into case.data under data['task_input'][resource_id].
+      3. Marks the token as finished so movenext can advance along outgoing flows.
+    """
+    # Fetch the current token for this task shape
+    token = await service.get_token(idwf, idcase, resource_id)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No active token found for shape {resource_id} in case {idcase}",
+        )
+
+    # Only allow completion of tokens that are waiting for user input
+    if token.status != "user":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Token status is '{token.status}', expected 'user' for manual task completion",
+        )
+
+    # Optionally merge submitted data into case data (mirrors PHP's $CI->data handling)
+    if body.data:
+        from sqlalchemy import text as sa_text
+
+        update_stmt = sa_text(
+            "UPDATE cases SET data = jsonb_set(data, :path, :val::jsonb) WHERE idcase = :cid AND idwf = :mid"
+        ).bindparams(
+            path=f"data['task_input']['{resource_id}']",
+            val=str(body.data),
+            cid=idcase,
+            mid=idwf,
+        )
+        await service.db.execute(update_stmt)  # type: ignore[misc]
+        await service.db.flush()
+
+    # Mark task as finished (mirrors PHP's manual_task flow completion)
+    if token.status != "finished":
+        from datetime import UTC, datetime
+
+        token.status = "finished"
+        token.run_count = (token.run_count or 0) + 1
+        token.check_date = datetime.now(UTC)
+        await service.db.flush()
+
+    # Advance engine along outgoing flows — movenext handles the rest
+    await service.movenext(resource_id, idwf, idcase)
+
+    return TaskCompleteResponse(ok=True, msg="Task completed successfully")
 
 
 # -- Helpers ---------------------------------------------------------------- #

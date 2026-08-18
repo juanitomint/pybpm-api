@@ -260,7 +260,7 @@ class GenericGatewayHandler:
     logic (PHP L194-362).
     """
 
-    _STENCIL_IDS = frozenset({"InclusiveGateway", "EventbasedGateway"})
+    _STENCIL_IDS = frozenset({"InclusiveGateway"})
 
     @classmethod
     def stencil_id(cls) -> str:
@@ -278,10 +278,39 @@ class GenericGatewayHandler:
         return False
 
 
+class EventbasedGatewayHandler:
+    """Handle a token arriving on an EventbasedGateway shape.
+
+    Mirrors legacy PHP behavior (event_helper.php L350,409) which treats
+    EventbasedGateway as another gate via generic routing — movenext on all
+    outgoing flows. True BPMN event-based semantics ("wait for one catcher
+    to fire, activate only that path") are deferred: no Jason model currently
+    connects an intermediate catcher to an EventbasedGateway via sequence flow,
+    so the pass-through behavior is equivalent in practice.
+
+    A future implementation could add real wait-for-single-event logic using
+    the token's external_data field for cross-invocation state.
+    """
+
+    _STENCIL_ID = "EventbasedGateway"
+
+    @classmethod
+    def stencil_id(cls) -> str:
+        return cls._STENCIL_ID
+
+    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:  # noqa: ANN001, D401
+        idwf = token.idwf
+        case_id = token.case_id
+        outgoing = shape.get("outgoing") or []
+        for out_ref in outgoing:
+            rid = out_ref.get("resourceId") if isinstance(out_ref, dict) else None
+            if rid:
+                await service.movenext(rid, idwf, case_id)
+        return False
 # -- Auto-registration at import time --------------------------------------- #
 
 ENGINE_HANDLER_REGISTRY.register(ParallelGatewayHandler._STENCIL_ID, ParallelGatewayHandler)
 ENGINE_HANDLER_REGISTRY.register(ExclusiveDatabasedGatewayHandler._STENCIL_ID, ExclusiveDatabasedGatewayHandler)
-
+ENGINE_HANDLER_REGISTRY.register(EventbasedGatewayHandler._STENCIL_ID, EventbasedGatewayHandler)
 for _stencil in GenericGatewayHandler._STENCIL_IDS:
     ENGINE_HANDLER_REGISTRY.register(_stencil, GenericGatewayHandler)

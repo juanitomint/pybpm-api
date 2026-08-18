@@ -307,6 +307,7 @@ class EventbasedGatewayHandler:
             if rid:
                 await service.movenext(rid, idwf, case_id)
         return False
+
 # -- Auto-registration at import time --------------------------------------- #
 
 ENGINE_HANDLER_REGISTRY.register(ParallelGatewayHandler._STENCIL_ID, ParallelGatewayHandler)

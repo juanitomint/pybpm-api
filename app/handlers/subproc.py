@@ -324,4 +324,5 @@ class InlineSubprocessHandler:
 # Auto-register at import time via the registry pattern.
 from app.api.bpm.engine import ENGINE_HANDLER_REGISTRY  # noqa: E402
 
+ENGINE_HANDLER_REGISTRY.register(CollapsedSubprocessHandler._STENCIL_ID, CollapsedSubprocessHandler)
 ENGINE_HANDLER_REGISTRY.register(InlineSubprocessHandler._STENCIL_ID, InlineSubprocessHandler)

@@ -571,7 +571,58 @@ class IntermediateParallelMultipleEventCatchingHandler(_NoOpIntermediateEventCat
     _STENCIL_ID = "IntermediateParallelMultipleEventCatching"
 
 
+class IntermediateMessageEventThrowingHandler:
+    """Handle a token arriving on an IntermediateMessageEventThrowing shape.
+
+    Routes to generic throwing logic via :func:`run_intermediate_event_throwing`.
+    """
+
+    _STENCIL_ID = "IntermediateMessageEventThrowing"
+
+    @classmethod
+    def stencil_id(cls) -> str:
+        return cls._STENCIL_ID
+
+    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:  # noqa: ANN001
+        await run_intermediate_event_throwing(shape, token.idwf, token.case_id, service)
+        return False
+
+
+class IntermediateLinkEventThrowingHandler:
+    """Handle a token arriving on an IntermediateLinkEventThrowing shape.
+
+    Routes to generic throwing logic via :func:`run_intermediate_event_throwing`.
+    """
+
+    _STENCIL_ID = "IntermediateLinkEventThrowing"
+
+    @classmethod
+    def stencil_id(cls) -> str:
+        return cls._STENCIL_ID
+
+    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:  # noqa: ANN001
+        await run_intermediate_event_throwing(shape, token.idwf, token.case_id, service)
+        return False
+
+
+class IntermediateSignalEventThrowingHandler:
+    """Handle a token arriving on an IntermediateSignalEventThrowing shape.
+
+    Routes to generic throwing logic via :func:`run_intermediate_event_throwing`.
+    """
+
+    _STENCIL_ID = "IntermediateSignalEventThrowing"
+
+    @classmethod
+    def stencil_id(cls) -> str:
+        return cls._STENCIL_ID
+
+    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:  # noqa: ANN001
+        await run_intermediate_event_throwing(shape, token.idwf, token.case_id, service)
+        return False
+
 # -- Auto-registration at import time ----------------------------------------- #
+
 
 ENGINE_HANDLER_REGISTRY.register(IntermediateTimerEventHandler._STENCIL_ID, IntermediateTimerEventHandler)
 ENGINE_HANDLER_REGISTRY.register(IntermediateMessageEventCatchingHandler._STENCIL_ID, IntermediateMessageEventCatchingHandler)
@@ -586,3 +637,6 @@ ENGINE_HANDLER_REGISTRY.register(IntermediateCancelEventHandler._STENCIL_ID, Int
 ENGINE_HANDLER_REGISTRY.register(IntermediateCompensationEventCatchingHandler._STENCIL_ID, IntermediateCompensationEventCatchingHandler)
 ENGINE_HANDLER_REGISTRY.register(IntermediateMultipleEventCatchingHandler._STENCIL_ID, IntermediateMultipleEventCatchingHandler)
 ENGINE_HANDLER_REGISTRY.register(IntermediateParallelMultipleEventCatchingHandler._STENCIL_ID, IntermediateParallelMultipleEventCatchingHandler)
+ENGINE_HANDLER_REGISTRY.register(IntermediateMessageEventThrowingHandler._STENCIL_ID, IntermediateMessageEventThrowingHandler)
+ENGINE_HANDLER_REGISTRY.register(IntermediateLinkEventThrowingHandler._STENCIL_ID, IntermediateLinkEventThrowingHandler)
+ENGINE_HANDLER_REGISTRY.register(IntermediateSignalEventThrowingHandler._STENCIL_ID, IntermediateSignalEventThrowingHandler)

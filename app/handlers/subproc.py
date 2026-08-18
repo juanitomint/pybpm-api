@@ -271,7 +271,57 @@ class CollapsedSubprocessHandler:
         return False
 
 
+class InlineSubprocessHandler:
+    """Handle a token arriving on an expanded Subprocess (inline childShapes).
+
+    Unlike CollapsedSubprocess which spawns a separate child case, this handler
+    walks the shape's childShapes directly within the current case and creates
+    pending tokens on each executable shape. The engine loop then dispatches them
+    to their own handlers in sequence — no new case, no persistent tracking.
+
+    Visual-only stencils (Lane, Pool, TextAnnotation, Association_*) are skipped.
+    """
+
+    _STENCIL_ID = "Subprocess"
+
+    VISUAL_ONLY = {
+        "TextAnnotation", "Association_Undirected", "Association_Unidirectional",
+        "Lane", "Pool", "CollapsedPool", "DataObject", "DataStore",
+    }
+
+    @classmethod
+    def stencil_id(cls) -> str:
+        return cls._STENCIL_ID
+
+    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:  # noqa: ANN001
+        idwf = token.idwf
+        case_id = token.case_id
+        resource_id = shape["resourceId"]
+
+        for child in shape.get("childShapes") or []:
+            if not isinstance(child, dict):
+                continue
+            stencil = (child.get("stencil") or {}).get("id", "")
+            if stencil in self.VISUAL_ONLY:
+                continue
+            out_rid = child.get("resourceId") or child.get("id", "")
+            if not out_rid:
+                continue
+            existing = await service.get_token(idwf, case_id, out_rid)
+            if existing:
+                continue  # already has a token — let it flow normally
+            await service.create_token(
+                idwf=idwf,
+                case_id=case_id,
+                resource_id=out_rid,
+                type_=stencil,
+                status="pending",
+            )
+
+        await service.mark_token_finished(token)
+        return False
+
 # Auto-register at import time via the registry pattern.
 from app.api.bpm.engine import ENGINE_HANDLER_REGISTRY  # noqa: E402
 
-ENGINE_HANDLER_REGISTRY.register(CollapsedSubprocessHandler._STENCIL_ID, CollapsedSubprocessHandler)
+ENGINE_HANDLER_REGISTRY.register(InlineSubprocessHandler._STENCIL_ID, InlineSubprocessHandler)

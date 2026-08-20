@@ -450,3 +450,58 @@ async def transition_task(
         "previous_status": token.status,
         "target_status": body.target_status,
     }
+
+
+class TaskLockRequest(BaseModel):
+    resource_id: str
+    idwf: str
+
+
+@router.patch("/tasks/lock", status_code=status.HTTP_200_OK)
+async def lock_task(
+    body: TaskLockRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(_get_db),
+):
+    """Lock a task token for the current user (marks it as being worked on)."""
+    stmt = select(Token).where(
+        and_(Token.resource_id == body.resource_id, Token.idwf == body.idwf)
+    )
+    result = await db.execute(stmt)
+    token = result.scalar_one_or_none()
+
+    if token is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Token '{body.resource_id}'@'{body.idwf}' not found",
+        )
+
+    token.locked_by = user.idu  # type: ignore[assignment]
+    await db.commit()
+
+    return {"resourceId": body.resource_id, "idwf": body.idwf, "locked_by": user.idu}
+
+
+@router.patch("/tasks/unlock", status_code=status.HTTP_200_OK)
+async def unlock_task(
+    body: TaskLockRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(_get_db),
+):
+    """Unlock a task token (clear the current user's lock)."""
+    stmt = select(Token).where(
+        and_(Token.resource_id == body.resource_id, Token.idwf == body.idwf)
+    )
+    result = await db.execute(stmt)
+    token = result.scalar_one_or_none()
+
+    if token is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Token '{body.resource_id}'@'{body.idwf}' not found",
+        )
+
+    token.locked_by = None  # type: ignore[assignment]
+    await db.commit()
+
+    return {"resourceId": body.resource_id, "idwf": body.idwf, "locked_by": None}

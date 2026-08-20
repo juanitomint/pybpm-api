@@ -207,7 +207,7 @@ async def run_engine_test(idwf: str, token: str, headers: dict[str, str], post_a
             print(f"ERROR: run returned {resp.status_code}: {resp.text}")
             return 1
 
-        # Check for user-task tokens via DB
+        # Check for user-task tokens via DB and complete them.
         if post_all and iteration <= MAX_POST_ITERATIONS:
             async with async_session_factory() as session:
                 result = await session.execute(
@@ -215,13 +215,17 @@ async def run_engine_test(idwf: str, token: str, headers: dict[str, str], post_a
                 )
                 user_tokens = list(result.scalars().all())
             if user_tokens:
-                print(f"[post] Found {len(user_tokens)} user-task token(s), auto-POSTing...")
+                print(f"[task] Found {len(user_tokens)} user-task token(s), completing...")
                 async with httpx.AsyncClient() as client:
                     for ut in user_tokens:
-                        post_resp = await client.post(
-                            f"{api_base}/bpm/engine/post/{ut.idtoken}", json={"idu": 1}, headers=headers,
+                        task_resp = await client.post(
+                            f"{api_base}/bpm/engine/task/{idwf}/{idcase}/{ut.resource_id}",
+                            json={"data": {}, "action": "complete"}, headers=headers,
                         )
-                        print(f"[post] Token {ut.idtoken}: {'accepted' if post_resp.status_code == 200 else 'rejected (' + str(post_resp.status_code) + ')'}")
+                        if task_resp.status_code == 200:
+                            print(f"[task] {ut.resource_id}: completed")
+                        else:
+                            print(f"[task] {ut.resource_id}: failed ({task_resp.status_code}) — {task_resp.text}")
                 continue
         break
 
@@ -241,11 +245,11 @@ _token_cache: str = ""
 _headers: dict[str, str] = {}
 
 
-async def _async_main(idwf: str, no_import: bool, post_all: bool) -> int:
-    if not no_import:
+async def _async_main(idwf: str, do_import: bool, post_all: bool) -> int:
+    if do_import:
         await ensure_model_in_db(idwf)
     else:
-        print(f"[skip] Skipping import (--no-import)\n")
+        print(f"[skip] Skipping import\n")
     return await run_engine_test(idwf, _token_cache, _headers, post_all=post_all)
 
 
@@ -254,8 +258,8 @@ def main():
         description="Exercise a BPMN model through the live engine."
     )
     parser.add_argument("idwf", help="Workflow id (matches files/images/model/<idwf>.json)")
-    parser.add_argument("--no-import", action="store_true", help="Skip file→DB import.")
-    parser.add_argument("--post-all-tasks", action="store_true", help="Auto-POST user-task tokens until idle or 10 iterations.")
+    parser.add_argument("--import-models", action="store_true", help="Load model JSON from files/images/model/<idwf>.json into the DB before running.")
+    parser.add_argument("--post-all-tasks", action="store_true", help="Auto-complete user-task tokens until idle or 10 iterations.")
     args = parser.parse_args()
 
     if not Config.SECRET_KEY or "fallback" in Config.SECRET_KEY.lower():
@@ -267,7 +271,7 @@ def main():
     _headers = {"Authorization": f"Bearer {_token_cache}"}
     print(f"[auth] Admin JWT generated (idu=1, expires in {Config.JWT_EXPIRATION_HOURS}h)\n")
 
-    exit_code = asyncio.run(_async_main(args.idwf, args.no_import, args.post_all_tasks))
+    exit_code = asyncio.run(_async_main(args.idwf, args.import_models, args.post_all_tasks))
     sys.exit(exit_code)
 
 

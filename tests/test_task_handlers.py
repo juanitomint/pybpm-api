@@ -213,3 +213,122 @@ class TestOutgoingTimerPreCreation:
         assert created[0]["resource_id"] == "timer-event"
         assert created[0]["type_"] == "IntermediateTimerEvent"
         assert created[0]["status"] == "pending"
+
+
+# -- Auto-assignment fallback tests ---------------------------------------- #
+
+
+class TestTaskHandlerAutoAssignNoRules:
+    """When no explicit resource rules exist on a User/Manual task, the engine must auto-assign
+    to the case initiator — mirroring legacy Bpm::assign() fallback behavior."""
+
+    @pytest.mark.asyncio
+    async def test_user_task_no_resources_auto_assigns_to_initiator(self, mock_service, task_token):
+        """No resources on shape triggers initiator lookup; at least one execute call includes assign+title."""
+        from app.handlers.task import TaskHandler
+
+        handler = TaskHandler()
+        # Shape has no 'resources' key at all.
+        shape = _make_shape("User", name="Review Document")
+
+        mock_init_result = AsyncMock()
+        mock_init_result.scalar_one_or_none.return_value = 42
+
+        captured: list[tuple] = []
+        async def fake_execute(stmt):  # type: ignore[no-untyped-def]
+            captured.append((str(stmt)[:150],))
+            return mock_init_result if "initiator" in str(stmt).lower() else AsyncMock()
+
+        mock_service.db.execute.side_effect = fake_execute
+
+        await handler.handle(task_token, shape, mock_service)
+
+        # Verify an initiator lookup was issued.
+        init_lookups = [c for c in captured if "initiator_id" in c[0]]
+        assert len(init_lookups) == 1, f"Expected exactly one initiator lookup; got {len(init_lookups)}"
+
+        # Verify at least one execute call included 'assign' and 'title' (the token update).
+        assign_calls = [c for c in captured if "assign" in c[0] or "title" in c[0]]
+        assert len(assign_calls) >= 2, f"Expected updates for assign+title; got {len(assign_calls)} calls with assign/title"
+
+    @pytest.mark.asyncio
+    async def test_user_task_with_explicit_rules_skips_auto_assign(self, mock_service, task_token):
+        """Shape has resource rules -> auto-assign must NOT fire (rules take precedence)."""
+        from app.handlers.task import TaskHandler
+
+        handler = TaskHandler()
+        shape = _make_shape("User", name="Admin Task")
+        shape["resources"] = {
+            "items": [
+                {"resource": "user", "resource_type": "assign", "resourceassignmentexpr": "admin"},
+            ]
+        }
+
+        # No initiator lookup should happen — db.execute receives no SELECT.
+        exec_calls: list[str] = []
+        async def track_execute(stmt):  # type: ignore[no-untyped-def]
+            exec_calls.append(str(stmt))
+            return AsyncMock()
+        mock_service.db.execute.side_effect = track_execute
+
+        await handler.handle(task_token, shape, mock_service)
+
+        # No SELECT for initiator_id should have been issued.
+        select_calls = [c for c in exec_calls if "initiator" in c.lower()]
+        assert len(select_calls) == 0, (
+            f"Expected no initiator lookup when rules exist; got: {select_calls}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_manual_task_no_resources_auto_assigns(self, mock_service, task_token):
+        """Manual tasks share the same auto-assign fallback as User tasks."""
+        from app.handlers.task import TaskHandler
+
+        handler = TaskHandler()
+        shape = _make_shape("Manual", name="Sign Form")
+
+        captured: list[tuple] = []
+        mock_init_result = AsyncMock()
+        mock_init_result.scalar_one_or_none.return_value = 7
+
+        async def fake_execute(stmt):  # type: ignore[no-untyped-def]
+            captured.append((str(stmt)[:150],))
+            return mock_init_result if "initiator" in str(stmt).lower() else AsyncMock()
+
+        mock_service.db.execute.side_effect = fake_execute
+
+        await handler.handle(task_token, shape, mock_service)
+
+        init_lookups = [c for c in captured if "initiator_id" in c[0]]
+        assert len(init_lookups) == 1, f"Expected exactly one initiator lookup; got {len(init_lookups)}"
+
+        assign_calls = [c for c in captured if "assign" in c[0] or "title" in c[0]]
+        assert len(assign_calls) >= 2, f"Expected updates for assign+title; got {len(assign_calls)} calls with assign/title"
+
+
+class TestTaskHandlerIduStored:
+    """The token's 'idu' field should record who the task was auto-assigned to."""
+
+    @pytest.mark.asyncio
+    async def test_idu_stored_on_token_during_auto_assign(self, mock_service, task_token):
+        """When no rules apply, idu=initiator is persisted on the token row (visible in SQL text)."""
+        from app.handlers.task import TaskHandler
+
+        handler = TaskHandler()
+        shape = _make_shape("User", name="Approve")
+
+        mock_init_result = AsyncMock()
+        mock_init_result.scalar_one_or_none.return_value = 99
+
+        captured: list[str] = []
+        async def fake_execute(stmt):  # type: ignore[no-untyped-def]
+            captured.append(str(stmt))
+            return mock_init_result if "initiator" in str(stmt).lower() else AsyncMock()
+
+        mock_service.db.execute.side_effect = fake_execute
+
+        await handler.handle(task_token, shape, mock_service)
+
+        # At least one execute call should reference 'idu' (the column we set alongside assign).
+        idu_calls = [c for c in captured if "idu" in c.lower()]
+        assert len(idu_calls) >= 1, f"Expected at least one update referencing 'idu'; got {len(captured)} total calls"

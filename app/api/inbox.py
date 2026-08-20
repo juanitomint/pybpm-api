@@ -5,14 +5,14 @@ endpoints, adapted to RESTful conventions:
 
 .. code-block:: text
 
-    GET    /api/v1/inbox/              — main listing page data (default inbox)
-    POST   /api/v1/inbox/folder/{folder}/           — paginated folder messages
-    GET    /api/v1/inbox/counts/             — message counts by folder
-    POST   /api/v1/inbox/filter/             — filter/search messages by query
-    GET    /api/v1/inbox/message/{msgid}/    — get single message (marks as read)
-    PATCH  /api/v1/inbox/message/{msgid}/    — unified star/read/tag action
-    POST   /api/v1/inbox/send/               — send message to user(s)
-    DELETE /api/v1/inbox/message/{msgid}/    — delete message permanently
+    GET    /inbox/              — main listing page data (default inbox)
+    POST   /inbox/folder/{folder}/           — paginated folder messages
+    GET    /inbox/counts/             — message counts by folder
+    POST   /inbox/filter/             — filter/search messages by query
+    GET    /inbox/message/{msgid}/    — get single message (marks as read)
+    PATCH  /inbox/message/{msgid}/    — unified star/read/tag action
+    POST   /inbox/send/               — send message to user(s)
+    DELETE /inbox/message/{msgid}/    — delete message permanently
 """
 
 # from __future__ import annotations  # disabled for pydantic v2 compat
@@ -41,7 +41,7 @@ from app.services.inbox_service import InboxService
 logger = logging.getLogger(__name__)
 
 
-router = APIRouter(prefix="/api/v1/inbox", tags=["inbox"])
+router = APIRouter(prefix="/inbox", tags=["inbox"])
 
 
 async def _get_db() -> AsyncSession:  # pragma: no cover — FastAPI dep wiring

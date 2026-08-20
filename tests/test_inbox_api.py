@@ -5,7 +5,6 @@ Uses per-test isolated DB sessions via conftest.py fixtures.
 """
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 
 
 @pytest.fixture
@@ -24,15 +23,15 @@ async def auth_headers(client):
 
 @pytest.mark.asyncio
 async def test_get_inbox_list(client, auth_headers):
-    """GET /api/v1/inbox/ returns paginated message list."""
-    response = await client.get("/api/v1/inbox/", headers=auth_headers)
+    """GET /inbox/ returns paginated message list."""
+    response = await client.get("/inbox/", headers=auth_headers)
     assert response.status_code in (200, 307, 404)
 
 
 @pytest.mark.asyncio
 async def test_get_inbox_counts(client, auth_headers):
-    """POST /api/v1/inbox/counts/ returns folder and unread counts."""
-    response = await client.post("/api/v1/inbox/counts/", headers=auth_headers, json={})
+    """POST /inbox/counts/ returns folder and unread counts."""
+    response = await client.post("/inbox/counts/", headers=auth_headers, json={})
     assert response.status_code == 200
     data = response.json()
     assert "inbox_count" in data
@@ -41,8 +40,8 @@ async def test_get_inbox_counts(client, auth_headers):
 
 @pytest.mark.asyncio
 async def test_filter_with_key_value_dict(client, auth_headers):
-    """POST /api/v1/inbox/filter/ accepts key-value dict and filters messages."""
-    response = await client.post("/api/v1/inbox/filter/", headers=auth_headers, json={"folder": "inbox"})
+    """POST /inbox/filter/ accepts key-value dict and filters messages."""
+    response = await client.post("/inbox/filter/", headers=auth_headers, json={"folder": "inbox"})
     assert response.status_code == 200
     data = response.json()
     assert "messages" in data
@@ -50,16 +49,16 @@ async def test_filter_with_key_value_dict(client, auth_headers):
 
 @pytest.mark.asyncio
 async def test_get_single_message(client, auth_headers):
-    """GET /api/v1/inbox/message/{msgid}/ returns a single message or 404."""
-    response = await client.get("/api/v1/inbox/message/1/", headers=auth_headers)
+    """GET /inbox/message/{msgid}/ returns a single message or 404."""
+    response = await client.get("/inbox/message/1/", headers=auth_headers)
     assert response.status_code in (200, 404)
 
 
 @pytest.mark.asyncio
 async def test_unified_patch_star(client, auth_headers):
-    """PATCH /api/v1/inbox/message/{msgid}/ with action=star returns valid response."""
+    """PATCH /inbox/message/{msgid}/ with action=star returns valid response."""
     response = await client.patch(
-        "/api/v1/inbox/message/1/",
+        "/inbox/message/1/",
         headers=auth_headers,
         json={"action": "star"},
     )
@@ -68,9 +67,9 @@ async def test_unified_patch_star(client, auth_headers):
 
 @pytest.mark.asyncio
 async def test_unified_patch_read(client, auth_headers):
-    """PATCH /api/v1/inbox/message/{msgid}/ with action=read returns valid response."""
+    """PATCH /inbox/message/{msgid}/ with action=read returns valid response."""
     response = await client.patch(
-        "/api/v1/inbox/message/1/",
+        "/inbox/message/1/",
         headers=auth_headers,
         json={"action": "read", "is_read": True},
     )
@@ -79,9 +78,9 @@ async def test_unified_patch_read(client, auth_headers):
 
 @pytest.mark.asyncio
 async def test_unified_patch_tag(client, auth_headers):
-    """PATCH /api/v1/inbox/message/{msgid}/ with action=tag returns valid response."""
+    """PATCH /inbox/message/{msgid}/ with action=tag returns valid response."""
     response = await client.patch(
-        "/api/v1/inbox/message/1/",
+        "/inbox/message/1/",
         headers=auth_headers,
         json={"action": "tag", "tag": "urgent"},
     )
@@ -90,9 +89,9 @@ async def test_unified_patch_tag(client, auth_headers):
 
 @pytest.mark.asyncio
 async def test_send_message(client, auth_headers):
-    """POST /api/v1/inbox/send/ creates a new message or returns error."""
+    """POST /inbox/send/ creates a new message or returns error."""
     response = await client.post(
-        "/api/v1/inbox/send/",
+        "/inbox/send/",
         headers=auth_headers,
         json={"to_user_id": 1, "subject": "Test", "body": "Body"},
     )
@@ -101,8 +100,8 @@ async def test_send_message(client, auth_headers):
 
 @pytest.mark.asyncio
 async def test_delete_nonexistent_message(client, auth_headers):
-    """DELETE /api/v1/inbox/message/999/ returns ok=false for nonexistent."""
-    response = await client.delete("/api/v1/inbox/message/999/", headers=auth_headers)
+    """DELETE /inbox/message/999/ returns ok=false for nonexistent."""
+    response = await client.delete("/inbox/message/999/", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     assert "ok" in data
@@ -110,9 +109,9 @@ async def test_delete_nonexistent_message(client, auth_headers):
 
 @pytest.mark.asyncio
 async def test_filter_with_multiple_keys(client, auth_headers):
-    """POST /api/v1/inbox/filter/ with multiple filter keys returns results."""
+    """POST /inbox/filter/ with multiple filter keys returns results."""
     response = await client.post(
-        "/api/v1/inbox/filter/",
+        "/inbox/filter/",
         headers=auth_headers,
         json={"folder": "inbox", "read": False},
     )

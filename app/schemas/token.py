@@ -65,7 +65,6 @@ class TokenResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    idtoken: int
     idwf: str
     case_id: str
     resource_id: str
@@ -89,7 +88,6 @@ class TokenListResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    idtoken: int
     idwf: str
     case_id: str
     resource_id: str
@@ -107,7 +105,8 @@ class TokenCreateResponse(BaseModel):
 
     ok: bool = True
     msg: str = "Token created successfully"
-    idtoken: int | None = None
+    resource_id: str | None = None
+    idwf: str | None = None
 
 
 class TokenUpdateResponse(BaseModel):
@@ -115,7 +114,8 @@ class TokenUpdateResponse(BaseModel):
 
     ok: bool = True
     msg: str = "Token updated successfully"
-    idtoken: int | None = None
+    resource_id: str | None = None
+    idwf: str | None = None
 
 
 class TokenDeleteResponse(BaseModel):
@@ -123,7 +123,8 @@ class TokenDeleteResponse(BaseModel):
 
     ok: bool = True
     msg: str = "Token deleted successfully"
-    idtoken: int | None = None
+    resource_id: str | None = None
+    idwf: str | None = None
 
 
 class TokenAssignResponse(BaseModel):
@@ -131,7 +132,8 @@ class TokenAssignResponse(BaseModel):
 
     ok: bool = True
     msg: str = "Token assigned successfully"
-    idtoken: int | None = None
+    resource_id: str | None = None
+    idwf: str | None = None
     assign: list[int] = Field(default=[], description="List of assigned user IDs")
 
 

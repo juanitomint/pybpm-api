@@ -110,7 +110,6 @@ async def list_tokens(
     for token in tokens:
         token_responses.append(
             TokenListResponse(
-                idtoken=token.idtoken,
                 idwf=token.idwf,
                 case_id=token.case_id,
                 resource_id=token.resource_id,
@@ -209,7 +208,6 @@ async def create_token(
     return TokenCreateResponse(
         ok=True,
         msg="Token created successfully",
-        idtoken=token.idtoken,
     )
 
 

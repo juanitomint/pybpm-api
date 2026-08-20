@@ -10,7 +10,7 @@ separately so the scheduler can efficiently query "what's due now?".
 
 Schema:
 - ``idschedule`` — primary key, auto-increment
-- ``case_id`` — links to running case
+- ``case_id`` — links to running case (no FK constraint)
 - ``idwf`` — workflow ID (for cross-case lookups in subprocess scenarios)
 - ``resource_id`` — shape resourceId this schedule entry belongs to
 - ``trigger_time`` — when the scheduler should fire this event
@@ -20,6 +20,8 @@ Schema:
 
 Relationships to Token and BpmCase for audit trails.
 """
+
+from __future__ import annotations
 
 from datetime import UTC, datetime
 
@@ -44,7 +46,6 @@ class EventSchedule(Base):
     )
     case_id: Mapped[str] = mapped_column(
         sa.String(10),
-        sa.ForeignKey("cases.idcase"),
         nullable=False,
     )
     idwf: Mapped[str] = mapped_column(sa.String(255), nullable=False)
@@ -72,15 +73,15 @@ class EventSchedule(Base):
         onupdate=datetime.now(UTC),
     )
 
-    # Relationships
-    case = relationship("BpmCase", back_populates="event_schedules")
+    # Relationships — EventSchedule.case_id has no FK constraint.
+    # No back-reference on the EventSchedule side to avoid ambiguity without an FK.
 
 
 # Ensure BpmCase has the one-to-many relationship. Added here to avoid circular imports at module level.
-from app.models.case import BpmCase  # noqa: E402 — intentionally late import
+from app.models.case import BpmCase
 
 BpmCase.event_schedules = relationship(  # type: ignore[attr-defined]
     "EventSchedule",
-    back_populates="case",
-    cascade="all, delete-orphan",
+    foreign_keys=[EventSchedule.case_id],
+    primaryjoin='foreign(BpmCase.idcase) == EventSchedule.case_id',
 )

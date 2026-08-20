@@ -7,12 +7,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.auth import router as auth_router
 from app.api.bpm.cases import router as cases_router
 from app.api.bpm.engine import router as engine_router
-from app.handlers import *  # noqa: F401,F403  # triggers handler registration at import time
+from app.api.bpm.event_schedule import router as event_schedule_router
 from app.api.bpm.repository import router as bpm_router
 from app.api.bpm.tokens import router as token_manager_router
+from app.api.dashboard.dashboard import router as dashboard_router
 from app.api.inbox import router as inbox_router
-from app.api.bpm.event_schedule import router as event_schedule_router
 from app.core.logging import build_uvicorn_log_config
+from app.handlers import *  # triggers handler registration at import time
 
 SVG_DIR = "static/svg"
 
@@ -66,11 +67,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth_router)
+app.include_router(auth_router, prefix="/api/v1")
 app.include_router(bpm_router)
 app.include_router(engine_router)
 app.include_router(cases_router)
 app.include_router(token_manager_router)
+app.include_router(dashboard_router)
 app.include_router(inbox_router)  # TEMP DISABLED
 app.include_router(event_schedule_router)
 
@@ -84,6 +86,7 @@ async def root():
 
 def main():
     import uvicorn
+
     from app.core.scheduler import start_scheduler, stop_scheduler
     
     log_config = build_uvicorn_log_config()

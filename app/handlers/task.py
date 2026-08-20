@@ -148,8 +148,49 @@ class TaskHandler:
         tasktype = props.get("tasktype") or "Default"
         # --- Branch on tasktype (PHP L140-341) ------------------------------ #
         if tasktype in ("User", "Manual"):
-            # Mark token as 'user' status — stops engine loop, waits for manual POST.
+            from app.models.case import BpmCase as CaseModel
             from app.models.token import Token as TokenModel
+
+            # --- Auto-assign when no explicit resources defined (legacy Bpm::assign() fallback) -- #
+            # Legacy checks $shape->properties->resources->items; if absent, auto-assign to case initiator.
+            shape_resources = shape.get("resources") or {}
+            resource_items = shape_resources.get("items", []) if isinstance(shape_resources, dict) else []
+            has_explicit_rules = any(
+                item.get("resourceassignmentexpr") for item in resource_items  # type: ignore[union-attr]
+                if isinstance(item, dict)
+            )
+
+            if not has_explicit_rules:
+                # Look up case initiator — mirrors legacy $this->user->Initiator = (int)$case['iduser']
+                fetch_initiator = sa.select(CaseModel.initiator_id).where(
+                    CaseModel.idcase == case_id, CaseModel.idwf == idwf,
+                )
+                init_result = await service.db.execute(fetch_initiator)  # type: ignore[misc]
+                initiator_id = init_result.scalar_one_or_none()
+
+                if initiator_id is not None:
+                    # Auto-assign to initiator (legacy fallback when no rules apply)
+                    current_assign = token.assign or []
+                    if initiator_id not in current_assign:
+                        current_assign.append(initiator_id)
+                    assign_update = sa.update(TokenModel).where(
+                        TokenModel.idwf == idwf,
+                        TokenModel.case_id == case_id,
+                        TokenModel.resource_id == resource_id,
+                    ).values(assign=current_assign, idu=initiator_id)
+                    await service.db.execute(assign_update)  # type: ignore[misc]
+
+            # Store shape title on token (mirrors legacy token.name field in MongoDB document)
+            shape_title = props.get("name") or props.get("title") or ""
+            if shape_title:
+                assign_update2 = sa.update(TokenModel).where(
+                    TokenModel.idwf == idwf,
+                    TokenModel.case_id == case_id,
+                    TokenModel.resource_id == resource_id,
+                ).values(title=shape_title)
+                await service.db.execute(assign_update2)  # type: ignore[misc]
+
+            # Mark token as 'user' status — stops engine loop, waits for manual POST.
 
             update_stmt = sa.update(TokenModel).where(
                 TokenModel.idwf == idwf,

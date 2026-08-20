@@ -18,12 +18,14 @@ class Token(Base):
 
     __tablename__ = "tokens"
 
-    idtoken: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # Composite PK — (resource_id, id_wf) uniquely identifies a token within a case.
+    resource_id: Mapped[str] = mapped_column(String(1024), nullable=False, primary_key=True)
     idwf: Mapped[str] = mapped_column(
         String(255),
         ForeignKey("models.idwf", ondelete="CASCADE"),
         index=True,
         nullable=False,
+        primary_key=True,
     )
     case_id: Mapped[str] = mapped_column(
         String(32),
@@ -31,7 +33,6 @@ class Token(Base):
         index=True,
         nullable=False,
     )
-    resource_id: Mapped[str] = mapped_column(String(1024), nullable=False)
     type: Mapped[str] = mapped_column(
         String(64), nullable=False
     )  # stencil ID (e.g., "Task", "StartNoneEvent")
@@ -44,6 +45,12 @@ class Token(Base):
     assign: Mapped[list | None] = mapped_column(
         sa.JSON()
     )  # list of user IDs assigned to this token
+    title: Mapped[str | None] = mapped_column(
+        String(512), nullable=True, default=None
+    )  # shape name/title for UI display
+    idu: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, index=True
+    )  # user ID who claimed/started this task
     external_data: Mapped[dict | None] = mapped_column(
         sa.JSON()
     )  # external webhook data keyed by origin

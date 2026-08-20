@@ -375,7 +375,7 @@ async def post(
     Returns 404 if no matching token is found (mirrors legacy ``show_error('Token not found',500)``).
     """
     # Search for token by ID.
-    stmt = select(Token).where(Token.idtoken == token_id)
+    stmt = select(Token).where(Token.resource_id == token_id)
     result = await service.db.execute(stmt)
     token = result.scalar_one_or_none()
 

@@ -82,7 +82,7 @@ docker-test: ## Test using docker image with .env variables
 ## Run engine test on a model (.venv/bin/python scripts/test_model.py <idwf>)
 .PHONY: test-model
 test-model: ## Run engine test on a model (MODEL=<idwf> [--post-all-tasks])
-	@.venv/bin/python scripts/test_model.py $(MODEL)
+	@.venv/bin/python scripts/test_model.py $(MODEL) --no-import
 .PHONY: printvars
 printvars: ## Prints make variables
 	$(foreach V, $(sort $(.VARIABLES)), \

@@ -6,10 +6,10 @@ Handles token lifecycle management within case instances — creation, status up
 Endpoints:
 - GET    /tokens/{idwf}/{case_id}              - List all tokens for a case (Ext.js format)
 - GET    /status/{idwf}/{idcase}               - Get token status summary for a case
-- GET    /{idtoken}                            - Get single token by ID
+- GET    /{resource_id}                        - Get single token by resource_id
 - POST   /create/{idwf}/{case_id}              - Create new token(s)
-- PATCH  /update/{idwf}/{case_id}/{idtoken}    - Update token attributes/status
-- DELETE /delete/{idwf}/{case_id}/{idtoken}    - Delete specific token
+- PATCH  /update/{idwf}/{case_id}/{resource_id} - Update token attributes/status
+- DELETE /delete/{idwf}/{case_id}/{resource_id} - Delete specific token
 """
 
 from __future__ import annotations
@@ -71,7 +71,9 @@ class UpdateTokenResponse(BaseModel):
 
     ok: bool = True
     msg: str
-    idtoken: int
+    resource_id: str | None = None
+    idwf: str | None = None
+
     status: str
     assign: list[int]
 
@@ -81,7 +83,8 @@ class DeleteTokenResponse(BaseModel):
 
     ok: bool = True
     msg: str
-    idtoken: int
+    resource_id: str | None = None
+    idwf: str | None = None
 
 
 class TokenAssignRequest(BaseModel):
@@ -96,7 +99,9 @@ class AssignTokenResponse(BaseModel):
 
     ok: bool = True
     msg: str
-    idtoken: int
+    resource_id: str | None = None
+    idwf: str | None = None
+
     assign: list[int]
 
 
@@ -136,7 +141,7 @@ async def list_tokens(
     stmt = (
         select(Token)
         .where(Token.case_id == case_id, Token.idwf == idwf)
-        .order_by(Token.idtoken)
+        .order_by(Token.resource_id)
     )
 
     result = await db.execute(stmt)
@@ -157,8 +162,8 @@ async def list_tokens(
 
         rows.append(
             {
-                "_id": {"$id": str(token.idtoken)},  # MongoDB-style _id with $id field
-                "id_token": token.idtoken,
+                "_id": f"{token.resource_id}:{token.idwf}",
+                "resource_id": token.resource_id,
                 "idwf": idwf,
                 "case_id": case_id,
                 "resource_id": token.resource_id,
@@ -187,75 +192,65 @@ async def get_token_status(
 ):
     """Get token status summary for a case.
 
-    Ported from legacy Engine::tokens() method.
-    Returns compact token information for status display in UI.
+    Ported from legacy Engine::get_case_tokens() method.
+    Returns a summary of all tokens grouped by their current status.
 
     Args:
         idwf: Workflow/model identifier
         idcase: Case instance identifier
 
     Returns:
-        Dict with 'totalCount' (int) and 'rows' (list of token dicts) in Ext.js format
-
-    Raises:
-        HTTPException: 404 if case not found
+        Dict with 'status_summary' (list of dicts) containing token counts per status
     """
+    from app.models.case import BpmCase
+
     # Validate case exists
+    stmt = select(BpmCase).where(BpmCase.idcase == idcase, BpmCase.idwf == idwf)
+    result = await db.execute(stmt)
+    case = result.scalar_one_or_none()
+
+    if case is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Case '{idcase}' does not exist in workflow '{idwf}'",
+        )
+
+    # Get all tokens for this case
     stmt = (
         select(Token)
         .where(Token.case_id == idcase, Token.idwf == idwf)
-        .order_by(Token.idtoken)
+        .order_by(Token.resource_id)
     )
-
     result = await db.execute(stmt)
     tokens = result.scalars().all()
 
-    rows = []
+    # Group by status and count
+    status_summary: dict[str, int] = {}
     for token in tokens:
-        user_name = "admin"
-        if token.assign and len(token.assign) > 0:
-            from app.models.user import User
-
-            user_stmt = select(User).where(User.idu == token.assign[0])
-            user_result = await db.execute(user_stmt)
-            user = user_result.scalar_one_or_none()
-            if user and hasattr(user, "name"):
-                user_name = user.name or "admin"
-
-        rows.append(
-            {
-                "_id": {"$id": str(token.idtoken)},
-                "id_token": token.idtoken,
-                "idwf": idwf,
-                "case_id": idcase,
-                "resource_id": token.resource_id,
-                "type": token.type,
-                "status": token.status,
-                "name_user": user_name,
-                "checkdate": token.check_date.strftime("%Y-%m-%d %H:%M:%S")
-                if token.check_date
-                else "",
-            }
-        )
+        status_key = f"{token.status}_{token.idwf}" if token.status else "unknown"
+        status_summary[status_key] = status_summary.get(status_key, 0) + 1
 
     return {
-        "totalCount": len(rows),
-        "rows": rows,
+        "status_summary": [
+            {"status": k, "count": v, "case_id": idcase, "idwf": idwf}
+            for k, v in status_summary.items()
+        ],
+        "total_tokens": len(tokens),
     }
 
 
-@router.get("/{idtoken}", response_model=TokenResponse, status_code=status.HTTP_200_OK)
+@router.get("/{resource_id}", response_model=TokenResponse, status_code=status.HTTP_200_OK)
 async def get_token(
-    idtoken: int,
+    resource_id: str,
     db: AsyncSession = Depends(get_db),
 ):
-    """Get a single token by its ID.
+    """Get a single token by its resource_id.
 
     Ported from legacy Engine::get_token() method.
     Returns full token details including assignments and execution state.
 
     Args:
-        idtoken: The unique identifier of the token to retrieve
+        resource_id: The resource identifier of the token to retrieve (part of composite PK)
 
     Returns:
         TokenResponse with all token attributes in JSON format
@@ -263,14 +258,14 @@ async def get_token(
     Raises:
         HTTPException: 404 if token not found
     """
-    stmt = select(Token).where(Token.idtoken == idtoken)
+    stmt = select(Token).where(Token.resource_id == resource_id)
     result = await db.execute(stmt)
     token = result.scalar_one_or_none()
 
     if token is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Token '{idtoken}' not found",
+            detail=f"Token '{resource_id}' not found",
         )
 
     # Get assigned user info if available
@@ -285,10 +280,9 @@ async def get_token(
             name_user = user.name or "admin"
 
     return {
-        "idtoken": token.idtoken,
+        "resourceId": token.resource_id,
         "idwf": token.idwf,
         "case_id": token.case_id,
-        "resource_id": token.resource_id,
         "type": token.type,
         "status": token.status,
         "assign": token.assign or [],
@@ -351,10 +345,10 @@ async def create_token(
                 external_data=None,
             )
             db.add(new_token)
-            await db.flush()  # Get the auto-generated idtoken
+            await db.flush()
             tokens_created.append(
                 {
-                    "idtoken": new_token.idtoken,
+                    "resourceId": new_token.resource_id,
                     "status": "created",
                 }
             )
@@ -373,7 +367,7 @@ async def create_token(
         await db.flush()
         tokens_created.append(
             {
-                "idtoken": new_token.idtoken,
+                "resourceId": new_token.resource_id,
                 "status": "created",
             }
         )
@@ -389,11 +383,11 @@ async def create_token(
     )
 
 
-@router.patch("/update/{idwf}/{case_id}/{idtoken}", status_code=status.HTTP_200_OK)
+@router.patch("/update/{idwf}/{case_id}/{resource_id}", status_code=status.HTTP_200_OK)
 async def update_token(
     idwf: str,
     case_id: str,
-    idtoken: int,
+    resource_id: str,
     request: TokenUpdateRequest,
     db: AsyncSession = Depends(get_db),
 ):
@@ -405,7 +399,7 @@ async def update_token(
     Args:
         idwf: Workflow/model identifier
         case_id: Case instance identifier
-        idtoken: Token ID to update
+        resource_id: Token resource_id (part of composite PK with idwf)
         request: TokenUpdateRequest with fields to modify
 
     Returns:
@@ -416,7 +410,7 @@ async def update_token(
     """
     # Get existing token
     stmt = select(Token).where(
-        Token.idtoken == idtoken,
+        Token.resource_id == resource_id,
         Token.case_id == case_id,
         Token.idwf == idwf,
     )
@@ -426,7 +420,7 @@ async def update_token(
     if token is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Token '{idtoken}' not found in case '{case_id}'",
+            detail=f"Token '{resource_id}' not found in case '{case_id}'",
         )
 
     # Update provided fields
@@ -456,23 +450,24 @@ async def update_token(
     await db.refresh(token)
 
     logger.info(
-        f"Token {idtoken} updated: status={token.status}, assign={token.assign}"
+        f"Token {resource_id} updated: status={token.status}, assign={token.assign}"
     )
 
     return UpdateTokenResponse(
         ok=True,
         msg="Token updated successfully",
-        idtoken=idtoken,
+        resource_id=resource_id,
+        idwf=idwf,
         status=token.status,
         assign=token.assign or [],
     )
 
 
-@router.delete("/delete/{idwf}/{case_id}/{idtoken}", status_code=status.HTTP_200_OK)
+@router.delete("/delete/{idwf}/{case_id}/{resource_id}", status_code=status.HTTP_200_OK)
 async def delete_token(
     idwf: str,
     case_id: str,
-    idtoken: int,
+    resource_id: str,
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a specific token.
@@ -483,7 +478,7 @@ async def delete_token(
     Args:
         idwf: Workflow/model identifier
         case_id: Case instance identifier
-        idtoken: Token ID to delete
+        resource_id: Token resource_id (part of composite PK with idwf)
 
     Returns:
         DeleteTokenResponse indicating success/failure
@@ -493,7 +488,7 @@ async def delete_token(
     """
     # Get existing token first (for history)
     stmt = select(Token).where(
-        Token.idtoken == idtoken,
+        Token.resource_id == resource_id,
         Token.case_id == case_id,
         Token.idwf == idwf,
     )
@@ -503,7 +498,7 @@ async def delete_token(
     if token is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Token '{idtoken}' not found in case '{case_id}'",
+            detail=f"Token '{resource_id}' not found in case '{case_id}'",
         )
 
     # Create history record before deletion (optional audit trail)
@@ -518,26 +513,31 @@ async def delete_token(
     )
     db.add(history)
 
-    # Delete the token
-    delete_stmt = sa_delete(Token).where(Token.idtoken == idtoken)
+    # Delete the token (scoped to case+workflow for safety)
+    delete_stmt = sa_delete(Token).where(
+        Token.resource_id == resource_id,
+        Token.case_id == case_id,
+        Token.idwf == idwf,
+    )
     await db.execute(delete_stmt)
 
     await db.commit()
 
-    logger.info(f"Token {idtoken} deleted from case {case_id}")
+    logger.info(f"Token {resource_id} deleted from case {case_id}")
 
     return DeleteTokenResponse(
         ok=True,
         msg="Token deleted successfully",
-        idtoken=idtoken,
+        resource_id=resource_id,
+        idwf=idwf,
     )
 
 
-@router.post("/assign/{idwf}/{case_id}/{idtoken}", status_code=status.HTTP_200_OK)
+@router.post("/assign/{idwf}/{case_id}/{resource_id}", status_code=status.HTTP_200_OK)
 async def assign_token(
     idwf: str,
     case_id: str,
-    idtoken: int,
+    resource_id: str,
     request: TokenAssignRequest,
     db: AsyncSession = Depends(get_db),
 ):
@@ -549,7 +549,7 @@ async def assign_token(
     Args:
         idwf: Workflow/model identifier
         case_id: Case instance identifier
-        idtoken: Token ID to assign
+        resource_id: Token resource_id (part of composite PK with idwf)
         request: TokenAssignRequest with user ID
 
     Returns:
@@ -560,7 +560,7 @@ async def assign_token(
     """
     # Get existing token
     stmt = select(Token).where(
-        Token.idtoken == idtoken,
+        Token.resource_id == resource_id,
         Token.case_id == case_id,
         Token.idwf == idwf,
     )
@@ -570,7 +570,7 @@ async def assign_token(
     if token is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Token '{idtoken}' not found in case '{case_id}'",
+            detail=f"Token '{resource_id}' not found in case '{case_id}'",
         )
 
     # Update assignment list
@@ -585,12 +585,13 @@ async def assign_token(
     token.assign = current_assign
     await db.commit()
 
-    logger.info(f"Token {idtoken} assigned to user(s): {current_assign}")
+    logger.info(f"Token {resource_id} assigned to user(s): {current_assign}")
 
     return AssignTokenResponse(
         ok=True,
         msg=f"User {request.id_user} {'assigned' if request.action == 'add' else 'removed'} from token",
-        idtoken=idtoken,
+        resource_id=resource_id,
+        idwf=idwf,
         assign=current_assign,
     )
 

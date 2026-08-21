@@ -9,17 +9,16 @@ legacy ``dna2/application/modules/inbox/controllers/Msg.php`` (the
 from __future__ import annotations
 
 import datetime as dt
-from collections.abc import Awaitable, Callable
 from typing import Any
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.message import Message
 from app.models.user import User
 
-
 # -- Helpers ------------------------------------------------------------------- #
+
 
 def _format_time(checkdate: dt.datetime | None) -> str:
     """Format a timestamp in the legacy style used by the UI.
@@ -31,8 +30,8 @@ def _format_time(checkdate: dt.datetime | None) -> str:
         return ""
     # Coerce naive datetimes to UTC so subtraction works against an aware ``now``.
     if checkdate.tzinfo is None:
-        checkdate = checkdate.replace(tzinfo=dt.timezone.utc)
-    now = dt.datetime.now(dt.timezone.utc)
+        checkdate = checkdate.replace(tzinfo=dt.UTC)
+    now = dt.datetime.now(dt.UTC)
     delta = now - checkdate
     if delta.total_seconds() < 86_400:
         minutes = int(delta.seconds // 60)
@@ -110,12 +109,15 @@ class InboxService:
         count_stmt = select(func.count()).select_from(base.subquery())
         total_count = (await self.db.execute(count_stmt)).scalar() or 0
 
-        query = base.order_by(Message.checkdate.desc()).offset(
-            (page - 1) * per_page
-        ).limit(per_page)
+        query = (
+            base.order_by(Message.checkdate.desc())
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+        )
         result = await self.db.execute(query)
         rows = [self._message_to_dict(m) for m in result.scalars().all()]
         return rows, total_count
+
     async def filter_messages(
         self,
         user_idu: int,
@@ -172,7 +174,7 @@ class InboxService:
             folder="inbox",
             is_read=False,
             is_starred=False,
-            checkdate=dt.datetime.now(dt.timezone.utc),
+            checkdate=dt.datetime.now(dt.UTC),
         )
         self.db.add(msg)
         await self.db.commit()
@@ -182,7 +184,9 @@ class InboxService:
         # ``notification_by_email == 'yes'``. Requires an async SMTP client.
         return msg
 
-    async def mark_read(self, message_id: int, user_idu: int, is_read: bool = True) -> Message:
+    async def mark_read(
+        self, message_id: int, user_idu: int, is_read: bool = True
+    ) -> Message:
         """Mark a message as read/unread; raises if not found."""
         msg = await self.get_message_by_id(message_id, user_idu)
         if not msg:
@@ -265,6 +269,7 @@ class InboxService:
         Each keyword argument that is not ``None`` becomes an AND condition on every count query.
         Always scoped to the current user's messages (``to_idu``).
         """
+
         def _base_query(extra_folder=None) -> Select:
             q = select(func.count()).where(Message.to_idu == user_idu)
             if isinstance(extra_folder, str):
@@ -288,9 +293,9 @@ class InboxService:
 
         counts: dict[str, int] = {}
         for fld in ("inbox", "star", "trash"):
-            counts[f"{fld}_count"] = (await self.db.execute(
-                _base_query(extra_folder=fld)
-            )).scalar() or 0
+            counts[f"{fld}_count"] = (
+                await self.db.execute(_base_query(extra_folder=fld))
+            ).scalar() or 0
         sent_q = select(func.count()).where(Message.from_idu == user_idu)
         if folder:
             sent_q = sent_q.where(Message.folder == folder)

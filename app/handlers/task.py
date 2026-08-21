@@ -44,7 +44,7 @@ class TaskHandler:
     def stencil_id(cls) -> str:
         return cls._STENCIL_ID
 
-    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:  # noqa: ANN001, D401
+    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:
         """Execute Task logic based on tasktype."""
         idwf = token.idwf
         case_id = token.case_id
@@ -52,7 +52,9 @@ class TaskHandler:
 
         # --- Loop-type guard (PHP L16-30) ----------------------------------- #
         props = shape.get("properties") or {}
-        looptype = getattr(props.get("looptype"), "value", None) or (props.get("looptype") if isinstance(props.get("looptype"), str) else "")
+        looptype = getattr(props.get("looptype"), "value", None) or (
+            props.get("looptype") if isinstance(props.get("looptype"), str) else ""
+        )
         if looptype not in ("Standard", "None"):
             # Ensure task_run tracking exists on the service for this case.
             if not hasattr(service, "task_run"):
@@ -66,9 +68,13 @@ class TaskHandler:
         # shape matching the same name + tasktype. Preserves original resourceId so
         # the token's resource_id still resolves correctly against the model tree.
         if props.get("callacitivity"):
-            callable_name = (props.get("callableelement") or "") or str(props.get("name", ""))
-            task_type_str = str(tasktype) if "tasktype" in dir() else ""
-            candidates = await service.get_shapes_by_property(idwf, name=callable_name, tasktype=task_type_str)
+            callable_name = (props.get("callableelement") or "") or str(
+                props.get("name", "")
+            )
+            task_type_str = str(props.get("tasktype", "") or "")
+            candidates = await service.get_shapes_by_property(
+                idwf, name=callable_name, tasktype=task_type_str
+            )
             for candidate in candidates:
                 cand_props = candidate.get("properties") or {}
                 if not cand_props.get("callacitivity"):
@@ -95,9 +101,13 @@ class TaskHandler:
         # --- DataInputSet load (PHP L97-120) -------------------------------- #
         data: dict[str, Any] = {}
         data_input_set = props.get("datainputset") or {}
-        items = data_input_set.get("items", []) if isinstance(data_input_set, dict) else []
+        items = (
+            data_input_set.get("items", []) if isinstance(data_input_set, dict) else []
+        )
         for item in items:
-            name = getattr(item, "name", None) or (item.get("name") if isinstance(item, dict) else None)
+            name = getattr(item, "name", None) or (
+                item.get("name") if isinstance(item, dict) else None
+            )
             if not name:
                 continue
             if "." in str(name):
@@ -110,15 +120,24 @@ class TaskHandler:
                 data[ds_source][ds_item] = transport_data.get(ds_item)
 
         # Persist collected data on the token (PHP L120: set_token with $data).
-        merged_external = {**transport_data, **{k: v for d in [data] if isinstance(d, dict) for k, v in d.items()}}
-        update_stmt = sa.update(
-            # Lazy import — Token model may not be imported at module load.
-            __import__("app.models.token", fromlist=["Token"]).Token
-        ).where(
-            __import__("app.models.token", fromlist=["Token"]).Token.idwf == idwf,
-            __import__("app.models.token", fromlist=["Token"]).Token.case_id == case_id,
-            __import__("app.models.token", fromlist=["Token"]).Token.resource_id == resource_id,
-        ).values(external_data=merged_external if merged_external else None)
+        merged_external = {
+            **transport_data,
+            **{k: v for d in [data] if isinstance(d, dict) for k, v in d.items()},
+        }
+        update_stmt = (
+            sa.update(
+                # Lazy import — Token model may not be imported at module load.
+                __import__("app.models.token", fromlist=["Token"]).Token
+            )
+            .where(
+                __import__("app.models.token", fromlist=["Token"]).Token.idwf == idwf,
+                __import__("app.models.token", fromlist=["Token"]).Token.case_id
+                == case_id,
+                __import__("app.models.token", fromlist=["Token"]).Token.resource_id
+                == resource_id,
+            )
+            .values(external_data=merged_external if merged_external else None)
+        )
         await service.db.execute(update_stmt)  # type: ignore[misc]
 
         # --- Outgoing timer pre-creation (PHP L129-135) --------------------- #
@@ -141,8 +160,11 @@ class TaskHandler:
             out_stencil = (out_shape.get("stencil") or {}).get("id", "")
             if out_stencil == "IntermediateTimerEvent":
                 await service.create_token(
-                    idwf=idwf, case_id=case_id, resource_id=out_rid,
-                    type_=out_stencil, status="pending",
+                    idwf=idwf,
+                    case_id=case_id,
+                    resource_id=out_rid,
+                    type_=out_stencil,
+                    status="pending",
                 )
 
         tasktype = props.get("tasktype") or "Default"
@@ -154,16 +176,22 @@ class TaskHandler:
             # --- Auto-assign when no explicit resources defined (legacy Bpm::assign() fallback) -- #
             # Legacy checks $shape->properties->resources->items; if absent, auto-assign to case initiator.
             shape_resources = shape.get("resources") or {}
-            resource_items = shape_resources.get("items", []) if isinstance(shape_resources, dict) else []
+            resource_items = (
+                shape_resources.get("items", [])
+                if isinstance(shape_resources, dict)
+                else []
+            )
             has_explicit_rules = any(
-                item.get("resourceassignmentexpr") for item in resource_items  # type: ignore[union-attr]
+                item.get("resourceassignmentexpr")
+                for item in resource_items  # type: ignore[union-attr]
                 if isinstance(item, dict)
             )
 
             if not has_explicit_rules:
                 # Look up case initiator — mirrors legacy $this->user->Initiator = (int)$case['iduser']
                 fetch_initiator = sa.select(CaseModel.initiator_id).where(
-                    CaseModel.idcase == case_id, CaseModel.idwf == idwf,
+                    CaseModel.idcase == case_id,
+                    CaseModel.idwf == idwf,
                 )
                 init_result = await service.db.execute(fetch_initiator)  # type: ignore[misc]
                 initiator_id = init_result.scalar_one_or_none()
@@ -173,30 +201,42 @@ class TaskHandler:
                     current_assign = token.assign or []
                     if initiator_id not in current_assign:
                         current_assign.append(initiator_id)
-                    assign_update = sa.update(TokenModel).where(
-                        TokenModel.idwf == idwf,
-                        TokenModel.case_id == case_id,
-                        TokenModel.resource_id == resource_id,
-                    ).values(assign=current_assign, idu=initiator_id)
+                    assign_update = (
+                        sa.update(TokenModel)
+                        .where(
+                            TokenModel.idwf == idwf,
+                            TokenModel.case_id == case_id,
+                            TokenModel.resource_id == resource_id,
+                        )
+                        .values(assign=current_assign, idu=initiator_id)
+                    )
                     await service.db.execute(assign_update)  # type: ignore[misc]
 
             # Store shape title on token (mirrors legacy token.name field in MongoDB document)
             shape_title = props.get("name") or props.get("title") or ""
             if shape_title:
-                assign_update2 = sa.update(TokenModel).where(
-                    TokenModel.idwf == idwf,
-                    TokenModel.case_id == case_id,
-                    TokenModel.resource_id == resource_id,
-                ).values(title=shape_title)
+                assign_update2 = (
+                    sa.update(TokenModel)
+                    .where(
+                        TokenModel.idwf == idwf,
+                        TokenModel.case_id == case_id,
+                        TokenModel.resource_id == resource_id,
+                    )
+                    .values(title=shape_title)
+                )
                 await service.db.execute(assign_update2)  # type: ignore[misc]
 
             # Mark token as 'user' status — stops engine loop, waits for manual POST.
 
-            update_stmt = sa.update(TokenModel).where(
-                TokenModel.idwf == idwf,
-                TokenModel.case_id == case_id,
-                TokenModel.resource_id == resource_id,
-            ).values(status="user")
+            update_stmt = (
+                sa.update(TokenModel)
+                .where(
+                    TokenModel.idwf == idwf,
+                    TokenModel.case_id == case_id,
+                    TokenModel.resource_id == resource_id,
+                )
+                .values(status="user")
+            )
             await service.db.execute(update_stmt)  # type: ignore[misc]
             return False
 
@@ -208,7 +248,8 @@ class TaskHandler:
                 from app.models.case import BpmCase
 
                 fetch_stmt = sa.select(BpmCase.data).where(
-                    BpmCase.idcase == case_id, BpmCase.idwf == idwf,
+                    BpmCase.idcase == case_id,
+                    BpmCase.idwf == idwf,
                 )
                 current_data = await service.db.execute(fetch_stmt)  # type: ignore[misc]
                 current_data = current_data.scalar_one_or_none() or {}
@@ -227,9 +268,14 @@ class TaskHandler:
                 if isinstance(ds_obj, DataStorage):
                     ds_payload = ds_obj._data
                 new_data = {**current_data, operationref: result, **ds_payload}
-                update_stmt = sa.update(BpmCase).where(
-                    BpmCase.idcase == case_id, BpmCase.idwf == idwf,
-                ).values(data=new_data)
+                update_stmt = (
+                    sa.update(BpmCase)
+                    .where(
+                        BpmCase.idcase == case_id,
+                        BpmCase.idwf == idwf,
+                    )
+                    .values(data=new_data)
+                )
                 await service.db.execute(update_stmt)  # type: ignore[misc]
             await service.movenext(resource_id, idwf, case_id)
             return False

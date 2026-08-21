@@ -6,7 +6,6 @@ lives inside a folder named after its module (`bpm`). The corresponding FastAPI
 file is `app/api/bpm/repository.py`.
 """
 
-
 import copy as _copy_module
 import json
 import re
@@ -16,7 +15,7 @@ from pathlib import Path
 from typing import cast
 from urllib.parse import unquote_plus
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import CursorResult, select
 from sqlalchemy import delete as sa_delete
@@ -89,7 +88,9 @@ async def save(
     idwf = model_data.get("resourceId") if isinstance(model_data, dict) else None
 
     # Fresh modification date — legacy uses today's date at midnight UTC.
-    model_data.setdefault("properties", {})["modificationdate"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S")
+    model_data.setdefault("properties", {})["modificationdate"] = datetime.now(
+        UTC
+    ).strftime("%Y-%m-%dT%H:%M:%S")
 
     model, was_created = await service.save(idwf, model_data, svg=svg)
     http_status = 201 if was_created else 200
@@ -149,7 +150,9 @@ async def save_as(
     except (ValueError, TypeError):
         raise HTTPException(status_code=400, detail="Invalid JSON in 'data' field")
 
-    idwf = title or model_data.get("resourceId") if isinstance(model_data, dict) else None
+    idwf = (
+        title or model_data.get("resourceId") if isinstance(model_data, dict) else None
+    )
     if not idwf:
         raise HTTPException(status_code=500, detail="No name defined<br>")
 
@@ -163,7 +166,9 @@ async def save_as(
         )
 
     now = datetime.now(UTC)
-    model_data.setdefault("properties", {})["modificationdate"] = now.strftime("%Y-%m-%dT%H:%M:%S")
+    model_data.setdefault("properties", {})["modificationdate"] = now.strftime(
+        "%Y-%m-%dT%H:%M:%S"
+    )
 
     if svg:
         SVG_DIR.mkdir(parents=True, exist_ok=True)
@@ -322,6 +327,7 @@ async def load(
         "Pragma": "no-cache",
     }
     return JSONResponse(content=data, status_code=200, headers=headers)
+
 
 # -- Step 8: dump ------------------------------------------------------------- #
 

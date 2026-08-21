@@ -166,14 +166,15 @@ async def list_tokens(
                 "resource_id": token.resource_id,
                 "idwf": idwf,
                 "case_id": case_id,
-                "resource_id": token.resource_id,
                 "type": token.type,
                 "status": token.status,
                 "assign": token.assign or [],
                 "name_user": user_name,
-                "checkdate": token.check_date.strftime("%Y-%m-%d %H:%M:%S")
-                if token.check_date
-                else "",
+                "checkdate": (
+                    token.check_date.strftime("%Y-%m-%d %H:%M:%S")
+                    if token.check_date
+                    else ""
+                ),
                 "run_count": token.run_count,
             }
         )
@@ -239,7 +240,9 @@ async def get_token_status(
     }
 
 
-@router.get("/{resource_id}", response_model=TokenResponse, status_code=status.HTTP_200_OK)
+@router.get(
+    "/{resource_id}", response_model=TokenResponse, status_code=status.HTTP_200_OK
+)
 async def get_token(
     resource_id: str,
     db: AsyncSession = Depends(get_db),

@@ -136,3 +136,8 @@ data
 .zed/
 files/
 static/svg/*.svg
+
+# Test artifacts
+*.db
+test_*.db
+*.db-*

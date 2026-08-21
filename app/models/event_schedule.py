@@ -83,5 +83,5 @@ from app.models.case import BpmCase
 BpmCase.event_schedules = relationship(  # type: ignore[attr-defined]
     "EventSchedule",
     foreign_keys=[EventSchedule.case_id],
-    primaryjoin='foreign(BpmCase.idcase) == EventSchedule.case_id',
+    primaryjoin="foreign(BpmCase.idcase) == EventSchedule.case_id",
 )

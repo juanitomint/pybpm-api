@@ -17,15 +17,14 @@ Individual event stencils (Message, Signal, Error, Link, etc.) all route through
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-import sqlalchemy as sa
-
 from app.api.bpm.engine import ENGINE_HANDLER_REGISTRY
-from app.handlers.gate import _safe_eval
 
+logger = logging.getLogger(__name__)
 
 # -- Generic Throwing Logic --------------------------------------------------- #
 
@@ -77,15 +76,21 @@ async def run_intermediate_event_throwing(
         result = await service.get_shapes_by_property(
             idwf, stencil_id=catcher_stencil, name=trigger
         )
-        catchers_by_trigger = [s for s in result if s.get("resourceId") != shape.get("resourceId")]
+        catchers_by_trigger = [
+            s for s in result if s.get("resourceId") != shape.get("resourceId")
+        ]
 
     # Search by messageref.
     if name and "Message" in stencil_id:
         result = await service.get_shapes_by_property(idwf, messageref=name)
-        catchers_by_ref = [s for s in result if s.get("resourceId") != shape.get("resourceId")]
+        catchers_by_ref = [
+            s for s in result if s.get("resourceId") != shape.get("resourceId")
+        ]
 
     # Merge all catchers.
-    all_catchers = list(dict.fromkeys(catchers_by_trigger + catchers_by_name + catchers_by_ref))
+    all_catchers = list(
+        dict.fromkeys(catchers_by_trigger + catchers_by_name + catchers_by_ref)
+    )
 
     # Advance this throwing shape.
     await service.movenext(shape["resourceId"], idwf, case_id)
@@ -98,7 +103,10 @@ async def run_intermediate_event_throwing(
 
         # Check if token already exists.
         existing_token = await service.get_token(idwf, case_id, catcher_rid)
-        if existing_token and getattr(existing_token, "status", None) in ("canceled", "finished"):
+        if existing_token and getattr(existing_token, "status", None) in (
+            "canceled",
+            "finished",
+        ):
             continue  # Skip canceled or finished catchers.
 
         # Create pending token on catcher and dispatch.
@@ -127,8 +135,6 @@ async def _dispatch_catcher(
     For Timer events, it triggers time-based waiting logic.
     """
     stencil_id = shape.get("stencil", {}).get("id", "")
-    resource_id = shape.get("resourceId") or ""
-
     if "Timer" in stencil_id:
         await run_intermediate_timer_event(shape, idwf, case_id, service)
     else:
@@ -136,8 +142,6 @@ async def _dispatch_catcher(
 
 
 # -- Generic Catching Logic --------------------------------------------------- #
-
-
 async def run_intermediate_event_catching(
     shape: dict[str, Any],
     idwf: str,
@@ -316,7 +320,11 @@ async def run_intermediate_timer_event(
     elif status == "waiting":
         # Check if time has elapsed.
         current_dt = datetime.now(UTC)
-        trigger_str = token.external_data.get("trigger") if isinstance(token.external_data, dict) else ""
+        trigger_str = (
+            token.external_data.get("trigger")
+            if isinstance(token.external_data, dict)
+            else ""
+        )
         if not trigger_str:
             return  # No trigger set — keep waiting.
 
@@ -351,11 +359,12 @@ def _parse_trigger_timestamp(trigger_str: str) -> datetime | None:
     trigger_str = trigger_str.strip()
     if not trigger_str:
         return None
-
     # Try ISO format first.
     try:
         if "T" in trigger_str and "Z" in trigger_str:
-            return datetime.fromisoformat(trigger_str.replace("Z", "+00:00"))
+            return datetime.fromisoformat(
+                trigger_str.replace("Z", "+00:00")  # noqa: FURB162
+            )
         elif "T" in trigger_str:
             return datetime.fromisoformat(trigger_str)
     except (ValueError, TypeError):
@@ -363,8 +372,8 @@ def _parse_trigger_timestamp(trigger_str: str) -> datetime | None:
 
     # Try date-only format.
     try:
-        dt = datetime.strptime(trigger_str, "%Y-%m-%d")
-        return dt.replace(tzinfo=UTC) if trigger_str.count("-") == 2 else dt
+        dt = datetime.strptime(trigger_str, "%Y-%m-%d")  # noqa: DTZ007
+        return dt.replace(tzinfo=UTC)
     except (ValueError, TypeError):
         pass
 
@@ -398,7 +407,7 @@ class IntermediateTimerEventHandler:
     def stencil_id(cls) -> str:
         return cls._STENCIL_ID
 
-    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:  # noqa: ANN001, D401
+    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:
         await run_intermediate_timer_event(shape, token.idwf, token.case_id, service)
         return False
 
@@ -415,7 +424,7 @@ class IntermediateMessageEventCatchingHandler:
     def stencil_id(cls) -> str:
         return cls._STENCIL_ID
 
-    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:  # noqa: ANN001, D401
+    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:
         await run_intermediate_event_catching(shape, token.idwf, token.case_id, service)
         return False
 
@@ -434,45 +443,52 @@ class IntermediateSignalEventCatchingHandler:
     def stencil_id(cls) -> str:
         return cls._STENCIL_ID
 
-    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:  # noqa: ANN001, D401
+    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:
         """Check for active signal matches via SignalService; if found, advance the token. Otherwise create a waiting schedule."""
         idwf = token.idwf
         case_id = token.case_id
         resource_id = token.resource_id
-        
+
         # Get signal name from shape properties (matches legacy PHP $shape->properties->name).
         props = shape.get("properties") or {}
         signal_name = props.get("name", "")
-        
+
         if signal_name:
             try:
                 from app.services.signal_service import SignalService
-                
+
                 signal_svc = SignalService(service.db)  # type: ignore[arg-type]
                 active_signals = await signal_svc.find_by_name(signal_name)
-                
+
                 if active_signals:
                     # Found matching signals — advance the token past this shape.
                     logger.info(
                         "SignalCatchingHandler: found %d active signal(s) for '%s', advancing token",
-                        len(active_signals), signal_name,
+                        len(active_signals),
+                        signal_name,
                     )
                     await service.movenext(resource_id, idwf, case_id)
-                    
+
                     return False
-            except Exception as exc:
+            except (
+                Exception
+            ) as exc:  # noqa: BLE001 — log and continue even if signal check fails.
                 logger.error(
                     "SignalCatchingHandler: error checking signals for '%s': %s",
-                    signal_name, exc,
+                    signal_name,
+                    exc,
                 )
-        
+
         # No active signals found — create a signal schedule so the scheduler can fire this later when signals arrive.
         await service._set_token_status(
-            idwf, case_id, resource_id, "waiting", data={"signal_name": signal_name},
+            idwf,
+            case_id,
+            resource_id,
+            "waiting",
+            data={"signal_name": signal_name},
         )
         try:
-            from app.models.event_schedule import EventSchedule as ScheduleModel
-            
+
             await service._create_signal_event_schedule(
                 case_id=case_id,
                 idwf=idwf,
@@ -480,12 +496,15 @@ class IntermediateSignalEventCatchingHandler:
                 signal_name=signal_name,
                 data_json={"name": signal_name},
             )
-        except Exception as exc:  # noqa: BLE001 — log and continue even if schedule creation fails.
+        except (
+            Exception
+        ) as exc:  # noqa: BLE001 — log and continue even if schedule creation fails.
             logger.warning(
                 "SignalCatchingHandler: failed to create signal schedule for '%s': %s",
-                signal_name, exc,
+                signal_name,
+                exc,
             )
-        
+
         return False
 
 
@@ -498,7 +517,7 @@ class IntermediateErrorEventHandler:
     def stencil_id(cls) -> str:
         return cls._STENCIL_ID
 
-    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:  # noqa: ANN001, D401
+    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:
         await run_intermediate_event_catching(shape, token.idwf, token.case_id, service)
         return False
 
@@ -512,21 +531,19 @@ class IntermediateConditionalEventHandler:
     def stencil_id(cls) -> str:
         return cls._STENCIL_ID
 
-    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:  # noqa: ANN001, D401
+    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:
         await run_intermediate_event_catching(shape, token.idwf, token.case_id, service)
         return False
 
 
 class IntermediateLinkEventCatchingHandler:
-    """Handle a token arriving on an IntermediateLinkEventCatching shape."""
-
     _STENCIL_ID = "IntermediateLinkEventCatching"
 
     @classmethod
     def stencil_id(cls) -> str:
         return cls._STENCIL_ID
 
-    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:  # noqa: ANN001, D401
+    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:
         await run_intermediate_event_catching(shape, token.idwf, token.case_id, service)
         return False
 
@@ -535,6 +552,7 @@ class IntermediateLinkEventCatchingHandler:
 # These stencils exist in legacy PHP helper functions as no-ops or passthroughs.
 # Registering them prevents the engine dispatcher from crashing on unknown IDs.
 
+
 class _NoOpIntermediateEventCatchingHandler:
     """Generic no-op stub for intermediate catching events not yet implemented."""
 
@@ -542,32 +560,45 @@ class _NoOpIntermediateEventCatchingHandler:
     def stencil_id(cls) -> str:
         return "NoOp"  # not dispatched; only used as base class sentinel
 
-    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:  # noqa: ANN001, D401
+    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:
         return False
 
 
 class IntermediateEscalationEventCatchingHandler(_NoOpIntermediateEventCatchingHandler):
     """IntermediateEscalationEvent catching — no-op in PHP too (event_helper.php:425-430)."""
+
     _STENCIL_ID = "IntermediateEscalationEvent"
+
 
 class IntermediateCancelEventHandler(_NoOpIntermediateEventCatchingHandler):
     """IntermediateCancelEvent catching — no-op in PHP too (event_helper.php:454-459)."""
+
     _STENCIL_ID = "IntermediateCancelEvent"
 
-class IntermediateCompensationEventCatchingHandler(_NoOpIntermediateEventCatchingHandler):
+
+class IntermediateCompensationEventCatchingHandler(
+    _NoOpIntermediateEventCatchingHandler
+):
     """IntermediateCompensationEventCatching — no-op in PHP too (event_helper.php:461-466)."""
+
     _STENCIL_ID = "IntermediateCompensationEventCatching"
+
 
 class IntermediateMultipleEventCatchingHandler(_NoOpIntermediateEventCatchingHandler):
     """IntermediateMultipleEventCatching — no-op in PHP too (event_helper.php:485-490)."""
+
     _STENCIL_ID = "IntermediateMultipleEventCatching"
 
+
 # Non-trivial stub: waits for all throwers before advancing.
-class IntermediateParallelMultipleEventCatchingHandler(_NoOpIntermediateEventCatchingHandler):
+class IntermediateParallelMultipleEventCatchingHandler(
+    _NoOpIntermediateEventCatchingHandler
+):
     """IntermediateParallelMultipleEventCatching — partial implementation.
-    
+
     Waits until at least one matching throwing event has been observed, then advances.
     """
+
     _STENCIL_ID = "IntermediateParallelMultipleEventCatching"
 
 
@@ -583,7 +614,7 @@ class IntermediateMessageEventThrowingHandler:
     def stencil_id(cls) -> str:
         return cls._STENCIL_ID
 
-    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:  # noqa: ANN001
+    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:
         await run_intermediate_event_throwing(shape, token.idwf, token.case_id, service)
         return False
 
@@ -600,7 +631,7 @@ class IntermediateLinkEventThrowingHandler:
     def stencil_id(cls) -> str:
         return cls._STENCIL_ID
 
-    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:  # noqa: ANN001
+    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:
         await run_intermediate_event_throwing(shape, token.idwf, token.case_id, service)
         return False
 
@@ -617,26 +648,65 @@ class IntermediateSignalEventThrowingHandler:
     def stencil_id(cls) -> str:
         return cls._STENCIL_ID
 
-    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:  # noqa: ANN001
+    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:
         await run_intermediate_event_throwing(shape, token.idwf, token.case_id, service)
         return False
+
 
 # -- Auto-registration at import time ----------------------------------------- #
 
 
-ENGINE_HANDLER_REGISTRY.register(IntermediateTimerEventHandler._STENCIL_ID, IntermediateTimerEventHandler)
-ENGINE_HANDLER_REGISTRY.register(IntermediateMessageEventCatchingHandler._STENCIL_ID, IntermediateMessageEventCatchingHandler)
-ENGINE_HANDLER_REGISTRY.register(IntermediateSignalEventCatchingHandler._STENCIL_ID, IntermediateSignalEventCatchingHandler)
-ENGINE_HANDLER_REGISTRY.register(IntermediateErrorEventHandler._STENCIL_ID, IntermediateErrorEventHandler)
-ENGINE_HANDLER_REGISTRY.register(IntermediateConditionalEventHandler._STENCIL_ID, IntermediateConditionalEventHandler)
-ENGINE_HANDLER_REGISTRY.register(IntermediateLinkEventCatchingHandler._STENCIL_ID, IntermediateLinkEventCatchingHandler)
+ENGINE_HANDLER_REGISTRY.register(
+    IntermediateTimerEventHandler._STENCIL_ID, IntermediateTimerEventHandler
+)
+ENGINE_HANDLER_REGISTRY.register(
+    IntermediateMessageEventCatchingHandler._STENCIL_ID,
+    IntermediateMessageEventCatchingHandler,
+)
+ENGINE_HANDLER_REGISTRY.register(
+    IntermediateSignalEventCatchingHandler._STENCIL_ID,
+    IntermediateSignalEventCatchingHandler,
+)
+ENGINE_HANDLER_REGISTRY.register(
+    IntermediateErrorEventHandler._STENCIL_ID, IntermediateErrorEventHandler
+)
+ENGINE_HANDLER_REGISTRY.register(
+    IntermediateConditionalEventHandler._STENCIL_ID, IntermediateConditionalEventHandler
+)
+ENGINE_HANDLER_REGISTRY.register(
+    IntermediateLinkEventCatchingHandler._STENCIL_ID,
+    IntermediateLinkEventCatchingHandler,
+)
 
 # Register no-op stubs for intermediate stencils not yet implemented.
-ENGINE_HANDLER_REGISTRY.register(IntermediateEscalationEventCatchingHandler._STENCIL_ID, IntermediateEscalationEventCatchingHandler)
-ENGINE_HANDLER_REGISTRY.register(IntermediateCancelEventHandler._STENCIL_ID, IntermediateCancelEventHandler)
-ENGINE_HANDLER_REGISTRY.register(IntermediateCompensationEventCatchingHandler._STENCIL_ID, IntermediateCompensationEventCatchingHandler)
-ENGINE_HANDLER_REGISTRY.register(IntermediateMultipleEventCatchingHandler._STENCIL_ID, IntermediateMultipleEventCatchingHandler)
-ENGINE_HANDLER_REGISTRY.register(IntermediateParallelMultipleEventCatchingHandler._STENCIL_ID, IntermediateParallelMultipleEventCatchingHandler)
-ENGINE_HANDLER_REGISTRY.register(IntermediateMessageEventThrowingHandler._STENCIL_ID, IntermediateMessageEventThrowingHandler)
-ENGINE_HANDLER_REGISTRY.register(IntermediateLinkEventThrowingHandler._STENCIL_ID, IntermediateLinkEventThrowingHandler)
-ENGINE_HANDLER_REGISTRY.register(IntermediateSignalEventThrowingHandler._STENCIL_ID, IntermediateSignalEventThrowingHandler)
+ENGINE_HANDLER_REGISTRY.register(
+    IntermediateEscalationEventCatchingHandler._STENCIL_ID,
+    IntermediateEscalationEventCatchingHandler,
+)
+ENGINE_HANDLER_REGISTRY.register(
+    IntermediateCancelEventHandler._STENCIL_ID, IntermediateCancelEventHandler
+)
+ENGINE_HANDLER_REGISTRY.register(
+    IntermediateCompensationEventCatchingHandler._STENCIL_ID,
+    IntermediateCompensationEventCatchingHandler,
+)
+ENGINE_HANDLER_REGISTRY.register(
+    IntermediateMultipleEventCatchingHandler._STENCIL_ID,
+    IntermediateMultipleEventCatchingHandler,
+)
+ENGINE_HANDLER_REGISTRY.register(
+    IntermediateParallelMultipleEventCatchingHandler._STENCIL_ID,
+    IntermediateParallelMultipleEventCatchingHandler,
+)
+ENGINE_HANDLER_REGISTRY.register(
+    IntermediateMessageEventThrowingHandler._STENCIL_ID,
+    IntermediateMessageEventThrowingHandler,
+)
+ENGINE_HANDLER_REGISTRY.register(
+    IntermediateLinkEventThrowingHandler._STENCIL_ID,
+    IntermediateLinkEventThrowingHandler,
+)
+ENGINE_HANDLER_REGISTRY.register(
+    IntermediateSignalEventThrowingHandler._STENCIL_ID,
+    IntermediateSignalEventThrowingHandler,
+)

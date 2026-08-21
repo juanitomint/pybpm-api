@@ -6,7 +6,6 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 # -- Request Schemas ----------------------------------------------------------- #
 
 
@@ -108,13 +107,16 @@ class PostRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     external_origin: str = Field(
-        ..., description="Origin label for the external data bucket (e.g., 'inbox', 'webhook')."
+        ...,
+        description="Origin label for the external data bucket (e.g., 'inbox', 'webhook').",
     )
     external_id: str | None = Field(
-        default=None, description="Identifier of the external resource (message ID, webhook reference)."
+        default=None,
+        description="Identifier of the external resource (message ID, webhook reference).",
     )
     data: dict[str, Any] | None = Field(
-        default=None, description="Optional payload merged into case.data under data[external_origin][resourceId]."
+        default=None,
+        description="Optional payload merged into case.data under data[external_origin][resourceId].",
     )
 
 
@@ -200,7 +202,8 @@ class TaskCompleteRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: dict[str, Any] | None = Field(
-        default=None, description="Optional user-submitted form data merged into case.data."
+        default=None,
+        description="Optional user-submitted form data merged into case.data.",
     )
 
     action: str = Field(

@@ -21,11 +21,8 @@ import logging
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import and_, func, select
-from sqlalchemy import cast as sa_cast
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
-from sqlalchemy.sql import text as sa_text
 from sqlalchemy.sql.expression import BinaryExpression
 
 from app.api.auth import get_current_user
@@ -86,30 +83,42 @@ def _format_time(check_date: dt.datetime | None) -> str:
 
 
 def _assign_contains(user_id: int) -> BinaryExpression:
-    """Return a ``WHERE`` clause that checks whether assign contains user_id.
+    """Return a WHERE clause that checks whether assign contains user_id.
 
-    Postgres stores ``Token.assign`` as ``json`` (not ``jsonb``). The ``@>``
-    containment operator only accepts ``jsonb @> jsonb``, so we cast the column
-    to ``JSONB`` and compare against a literal JSON array:
+    On PostgreSQL uses CAST(assign AS JSONB) @> '[N]'::jsonb for proper array containment;
+    and plain LIKE matching via .contains() on SQLite (tests)."""
+    from app.models.token import Token  # noqa: WPS433
 
-        tokens.assign::jsonb @> '[1]'::jsonb
-    """
-    return Token.assign.cast(JSONB).op("@>")(sa_text(f"'[{user_id}]'::jsonb"))
+    # Detect dialect at runtime via async_session_factory.kw['bind'] (SA 2.x async mode).
+    from extensions import async_session_factory
+
+    bind = (
+        async_session_factory.kw.get("bind")
+        if hasattr(async_session_factory, "kw")
+        else None
+    )
+    url = getattr(bind, "url", None) if bind is not None else None
+    drivername = str(url.drivername) if url is not None else ""
+
+    if "postgresql" in drivername:
+        # Raw text with cast+@> for proper JSONB containment on PG.
+        from sqlalchemy import text as sa_text
+
+        return sa_text(  # type: ignore[return-value]
+            f"CAST(tokens.assign AS JSONB) @> '[{user_id}]'::jsonb"
+        )
+
+    return Token.assign.contains([user_id])
 
 
 def _model_name_expr() -> BinaryExpression:
     """Extract ``data.properties.name`` from the BpmModel JSON column.
 
-    PG stores ``data`` as ``json`` (not jsonb). The chain is::
-
-        data->>'properties'          -- returns TEXT  (the properties object)
-        CAST(... AS JSON)->>'name'   -- cast back to JSON, then extract name
+    Uses PG's ``#>>`` path operator for nested extraction (single-shot, avoids
+    text-on-text issue with double ``->>``). For non-PG dialects (SQLite in tests)
+    returns a literal empty string so queries still compile and run.
     """
-    return (
-        sa_cast(BpmModel.data.op("->>")("properties"), JSONB)
-        .op("->>")("name")
-        .label("model_name")
-    )
+    return BpmModel.data.op("->")("properties").op("->>")("name").label("model_name")
 
 
 def _task_status_conditions(user_id: int, status_filter: str | None = None) -> list:
@@ -139,7 +148,9 @@ def _task_status_conditions(user_id: int, status_filter: str | None = None) -> l
             Token.status.in_(["finished", "done"])  # type: ignore[arg-type]
         )
     else:
-        raise ValueError(f"Unknown task status filter: {status_filter}")
+        raise HTTPException(
+            status_code=400, detail=f"Unknown task status filter: {status_filter}"
+        )
 
     return conditions
 
@@ -388,7 +399,7 @@ async def dashboard_tasks(
                 title=row.title or "",  # type: ignore[attr-defined]
                 status=row.status,  # type: ignore[attr-defined]
                 checkDate=row.check_date,  # type: ignore[attr-defined]
-                caseId=row.case_id,  # type: ignore[attr-defined]
+                case_id=row.case_id,  # type: ignore[attr-defined]
                 idwf=row.idwf,  # type: ignore[attr-defined]
                 model_name=model_name,
                 time_elapsed=_format_time(row.check_date),  # type: ignore[arg-type]
@@ -413,10 +424,13 @@ class TaskStatusTransition(BaseModel):
     resource_id: str
     idwf: str
     target_status: str
+
+
 @router.patch("/tasks/status", status_code=status.HTTP_200_OK)
 async def transition_task(
     body: TaskStatusTransition = Body(...),
     user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(_get_db),
 ):
     """Stub: transition a task token to a new lifecycle status.
 
@@ -455,6 +469,7 @@ async def transition_task(
 class TaskLockRequest(BaseModel):
     resource_id: str
     idwf: str
+    case_id: str
 
 
 @router.patch("/tasks/lock", status_code=status.HTTP_200_OK)
@@ -463,12 +478,15 @@ async def lock_task(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(_get_db),
 ):
-    """Lock a task token for the current user (marks it as being worked on)."""
     stmt = select(Token).where(
-        and_(Token.resource_id == body.resource_id, Token.idwf == body.idwf)
+        and_(
+            Token.resource_id == body.resource_id,
+            Token.idwf == body.idwf,
+            Token.case_id == body.case_id,
+        )
     )
     result = await db.execute(stmt)
-    token = result.scalar_one_or_none()
+    token = result.scalars().first()
 
     if token is None:
         raise HTTPException(
@@ -490,10 +508,16 @@ async def unlock_task(
 ):
     """Unlock a task token (clear the current user's lock)."""
     stmt = select(Token).where(
-        and_(Token.resource_id == body.resource_id, Token.idwf == body.idwf)
+        and_(
+            Token.resource_id == body.resource_id,
+            Token.idwf == body.idwf,
+            Token.case_id == body.case_id,
+            Token.locked_by == user.idu,
+            _assign_contains(user.idu),
+        )
     )
     result = await db.execute(stmt)
-    token = result.scalar_one_or_none()
+    token = result.scalars().first()
 
     if token is None:
         raise HTTPException(

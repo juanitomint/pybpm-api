@@ -12,14 +12,16 @@ explicit import needed beyond importing this package (see ``app/handlers/__init_
 
 from __future__ import annotations
 
+import logging
+from datetime import UTC, datetime
 from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy import select
-from datetime import UTC, datetime
 
 from app.api.bpm.engine import ENGINE_HANDLER_REGISTRY
 
+logger = logging.getLogger(__name__)
 # -- Start event handlers ----------------------------------------------------- #
 
 
@@ -42,9 +44,11 @@ class StartNoneEventHandler:
         # Set case status to 'open' via ORM update.
         from app.models.case import BpmCase
 
-        stmt = sa.update(BpmCase).where(
-            BpmCase.idcase == case_id, BpmCase.idwf == idwf
-        ).values(status="open")
+        stmt = (
+            sa.update(BpmCase)
+            .where(BpmCase.idcase == case_id, BpmCase.idwf == idwf)
+            .values(status="open")
+        )
         await service.db.execute(stmt)  # type: ignore[misc]
         await service.db.flush()
 
@@ -176,9 +180,7 @@ class EndNoneEventHandler:
         """Fetch the full BpmCase row to read data.parent."""
         from app.models.case import BpmCase
 
-        stmt = select(BpmCase).where(
-            BpmCase.idcase == case_id, BpmCase.idwf == idwf
-        )
+        stmt = select(BpmCase).where(BpmCase.idcase == case_id, BpmCase.idwf == idwf)
         result = await service.db.execute(stmt)  # type: ignore[misc]
         row = result.scalar_one_or_none()
         if row is None:
@@ -262,13 +264,13 @@ class _SignalThrowingEndHandler:
         case_id = token.case_id
         resource_id = token.resource_id
         props = shape.get("properties") or {}
-        
+
         # Extract signal name from shape properties (legacy PHP uses $shape->properties->name as signal identifier).
         signal_name = props.get("name", "")
         if signal_name:
             try:
                 from app.services.signal_service import SignalService
-                
+
                 signal_svc = SignalService(service.db)  # type: ignore[arg-type]
                 await signal_svc.throw_signal(
                     name=signal_name,
@@ -276,15 +278,16 @@ class _SignalThrowingEndHandler:
                     case_id=case_id,
                     data={},  # signals can carry payload; v1 leaves it empty
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "SignalThrowingEndHandler: failed to throw signal %s: %s",
-                    signal_name, exc,
+                    signal_name,
+                    exc,
                 )
-        
+
         # Standard EndNoneEvent logic with moveForward=True.
         await service.movenext(resource_id, idwf, case_id)
-        
+
         parent_shape = await service.get_shape_parent(resource_id, idwf)
         if parent_shape is not None:
             parent_stencil = (parent_shape.get("stencil") or {}).get("id", "")
@@ -292,7 +295,7 @@ class _SignalThrowingEndHandler:
                 await service.movenext(
                     parent_shape.get("resourceId", ""), idwf, case_id
                 )
-        
+
         await service.close_case_if_empty(idwf, case_id)
         return False
 
@@ -317,9 +320,11 @@ class EndErrorEventHandler:
 
         from app.models.case import BpmCase
 
-        stmt = sa.update(BpmCase).where(
-            BpmCase.idcase == case_id, BpmCase.idwf == idwf
-        ).values(status="canceled")
+        stmt = (
+            sa.update(BpmCase)
+            .where(BpmCase.idcase == case_id, BpmCase.idwf == idwf)
+            .values(status="canceled")
+        )
         await service.db.execute(stmt)  # type: ignore[misc]
         await service.db.flush()
 
@@ -399,9 +404,11 @@ class EndTerminateEventHandler:
         await service.db.flush()
 
         # 2. Mark case as terminated (archive/delete is deferred — no archive table yet).
-        update_stmt = sa.update(BpmCase).where(
-            BpmCase.idcase == case_id, BpmCase.idwf == idwf
-        ).values(status="terminated")
+        update_stmt = (
+            sa.update(BpmCase)
+            .where(BpmCase.idcase == case_id, BpmCase.idwf == idwf)
+            .values(status="terminated")
+        )
         await service.db.execute(update_stmt)  # type: ignore[misc]
         return False
 

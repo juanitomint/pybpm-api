@@ -10,7 +10,7 @@ from app.api.bpm.engine import router as engine_router
 from app.api.bpm.event_schedule import router as event_schedule_router
 from app.api.bpm.repository import router as bpm_router
 from app.api.bpm.tokens import router as token_manager_router
-from app.api.dashboard.dashboard import router as dashboard_router
+from app.api.dashboard import router as dashboard_router
 from app.api.inbox import router as inbox_router
 from app.core.logging import build_uvicorn_log_config
 from app.handlers import *  # triggers handler registration at import time

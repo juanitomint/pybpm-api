@@ -6,9 +6,8 @@ from app.schemas.inbox import (
     MessageCounts,
     MessageOperationResponse,
     MessageRead,
-    SendMessageRequest,
-    UserSearchResult,
     UserSearchResponse,
+    UserSearchResult,
 )
 from app.schemas.repository import (
     CheckResponse,
@@ -19,12 +18,10 @@ from app.schemas.repository import (
     ModelCreateResponse,
     ModelDuplicateRequest,
     ModelRead,
-    ModelUpdate,
     SaveAsRequest,
     SaveModelRequest,
     SaveResponse,
     ScriptRequest,
-    ShapesResponse,
 )
 
 __all__ = [
@@ -47,6 +44,6 @@ __all__ = [
     "SaveModelRequest",
     "SaveResponse",
     "ScriptRequest",
-    "UserSearchResult",
     "UserSearchResponse",
+    "UserSearchResult",
 ]

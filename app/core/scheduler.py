@@ -18,6 +18,7 @@ import logging
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from fastapi import FastAPI
 
 logger = logging.getLogger(__name__)
 
@@ -26,16 +27,14 @@ def _scheduler_job():
     """APScheduler job that runs every 60 seconds — dispatches due schedules via SchedulerService."""
 
     async def run_dispatch():
-        from extensions import get_async_db
         from app.services.scheduler_service import SchedulerService
+        from extensions import get_async_db
 
         async with get_async_db() as db:
             service = SchedulerService(db)
             fired_count = await service.dispatch_due_schedules(limit=100)
             if fired_count > 0:
-                logger.info(
-                    "Scheduler: dispatched %d due schedule(s)", fired_count
-                )
+                logger.info("Scheduler: dispatched %d due schedule(s)", fired_count)
 
     loop = asyncio.new_event_loop()
     try:
@@ -44,7 +43,7 @@ def _scheduler_job():
         loop.close()
 
 
-def start_scheduler(app: "FastAPI") -> None:  # type: ignore[name-defined]
+def start_scheduler(app: FastAPI) -> None:  # type: ignore[name-defined]
     """Start the background scheduler that polls event_schedules every 60 seconds.
 
     Registers a single ``BackgroundScheduler`` job that calls ``_scheduler_job()``
@@ -69,7 +68,7 @@ def start_scheduler(app: "FastAPI") -> None:  # type: ignore[name-defined]
     logger.info("Scheduler started — polling event_schedules every 60 seconds")
 
 
-def stop_scheduler(app: "FastAPI") -> None:  # type: ignore[name-defined]
+def stop_scheduler(app: FastAPI) -> None:  # type: ignore[name-defined]
     """Stop the background scheduler on app shutdown."""
     scheduler = getattr(app.state, "scheduler", None)
     if scheduler and scheduler.running:

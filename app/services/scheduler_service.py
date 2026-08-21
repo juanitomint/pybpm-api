@@ -19,7 +19,8 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
-from sqlalchemy import select as sa_select, update as sa_update
+from sqlalchemy import select as sa_select
+from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.event_schedule import EventSchedule
@@ -126,7 +127,7 @@ class SchedulerService:
                     schedule.case_id,
                 )
 
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.error(
                     "SchedulerService: error dispatching schedule %d: %s",
                     schedule.idschedule,
@@ -140,11 +141,11 @@ class SchedulerService:
                 logger.info(
                     "SchedulerService: fired %d signal schedule(s)", signal_fired
                 )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.error("SchedulerService: error firing signal schedules: %s", exc)
 
         await self.db.flush()  # type: ignore[misc]
-        return fired_count + signal_fired if 'signal_fired' in dir() else fired_count
+        return fired_count + signal_fired if "signal_fired" in dir() else fired_count
 
     async def _fire_signal_schedules(self) -> int:
         """Fire pending signal schedules whose matching signals are active.
@@ -159,10 +160,14 @@ class SchedulerService:
         from app.models.event_schedule import EventSchedule as ScheduleModel
 
         # Find all pending signal schedules (schedule_type='signal').
-        stmt = sa_select(ScheduleModel).where(
-            ScheduleModel.status == "pending",
-            ScheduleModel.schedule_type == "signal",
-        ).limit(100)
+        stmt = (
+            sa_select(ScheduleModel)
+            .where(
+                ScheduleModel.status == "pending",
+                ScheduleModel.schedule_type == "signal",
+            )
+            .limit(100)
+        )
 
         result = await self.db.execute(stmt)  # type: ignore[misc]
         signal_schedules = list(result.scalars().all())
@@ -215,7 +220,7 @@ class SchedulerService:
                     schedule.resource_id,
                     schedule.case_id,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.error(
                     "SchedulerService: error firing signal schedule %d: %s",
                     schedule.idschedule,
@@ -237,16 +242,15 @@ class SchedulerService:
             True if the schedule was found, pending, and successfully fired; False otherwise.
         """
         # Fetch the target schedule entry.
-        stmt = sa_select(EventSchedule).where(
-            EventSchedule.idschedule == idschedule
-        )
+        stmt = sa_select(EventSchedule).where(EventSchedule.idschedule == idschedule)
         result = await self.db.execute(stmt)  # type: ignore[misc]
         schedule = result.scalar_one_or_none()
 
         if not schedule or schedule.status != "pending":
             logger.warning(
                 "SchedulerService: cannot fire %s (status=%s)",
-                idschedule, schedule.status if schedule else "missing",
+                idschedule,
+                schedule.status if schedule else "missing",
             )
             return False
 
@@ -265,7 +269,8 @@ class SchedulerService:
         if not token or token.status != "waiting":
             logger.warning(
                 "SchedulerService: token for %s is missing or not waiting (status=%s)",
-                idschedule, token.status if token else "missing",
+                idschedule,
+                token.status if token else "missing",
             )
             return False
 

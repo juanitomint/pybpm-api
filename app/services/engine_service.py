@@ -116,8 +116,14 @@ class EngineService:
             run_count=token.run_count,
         )
         self.db.add(history)
+
     async def _set_token_status(
-        self, idwf: str, case_id: str, resource_id: str, status_: str, data: dict | None = None
+        self,
+        idwf: str,
+        case_id: str,
+        resource_id: str,
+        status_: str,
+        data: dict | None = None,
     ) -> None:
         """Update a token's status and/or external_data.
 
@@ -142,6 +148,7 @@ class EngineService:
         if changed:
             token.updated_at = datetime.now(UTC)
             await self.db.flush()
+
     async def _check_token_finished(
         self, idwf: str, case_id: str, resource_id: str
     ) -> bool:
@@ -203,9 +210,7 @@ class EngineService:
                         cancel_data = {
                             "canceledBy": resource_id,
                             "canceledName": (
-                                (child.get("properties") or {}).get(
-                                    "name", ""
-                                )
+                                (child.get("properties") or {}).get("name", "")
                             ),
                         }
                         await self._set_token_status(
@@ -239,6 +244,7 @@ class EngineService:
             await _cancel_descendants(container)
 
         return canceled_count
+
     # -- Event schedule management ------------------------------------------- #
 
     async def _create_timer_event_schedule(
@@ -274,9 +280,11 @@ class EngineService:
         logger = logging.getLogger(__name__)
         logger.debug(
             "Created event_schedule: type=timer resource=%s trigger=%s",
-            resource_id, trigger_time.isoformat(),
+            resource_id,
+            trigger_time.isoformat(),
         )
         return entry.idschedule  # type: ignore[return-value]
+
     async def _create_signal_event_schedule(
         self,
         case_id: str,
@@ -287,18 +295,20 @@ class EngineService:
         idu: int | None = None,
     ) -> int:
         """Create an event_schedules row for a signal catch event that entered 'waiting' state.
-        
+
         The scheduler polls this table to find pending signal schedules and fires them when matching signals exist.
-        
+
         Returns the new schedule's idschedule.
         """
         from app.models.event_schedule import EventSchedule as ScheduleModel
-        
+
         entry = ScheduleModel(
             case_id=case_id,
             idwf=idwf,
             resource_id=resource_id,
-            trigger_time=datetime.now(UTC),  # Signal schedules don't have a future time; they fire when signal arrives.
+            trigger_time=datetime.now(
+                UTC
+            ),  # Signal schedules don't have a future time; they fire when signal arrives.
             schedule_type="signal",
             status="pending",
             data_json=data_json or {"name": signal_name},
@@ -309,9 +319,11 @@ class EngineService:
         logger = logging.getLogger(__name__)
         logger.debug(
             "Created event_schedule: type=signal resource=%s name='%s'",
-            resource_id, signal_name,
+            resource_id,
+            signal_name,
         )
         return entry.idschedule  # type: ignore[return-value]
+
     async def get_shape_parent(self, resource_id: str, idwf: str) -> dict | None:
         """Find the container parent shape of a given shape in the model tree.
 
@@ -358,6 +370,7 @@ class EngineService:
             return None
 
         return _walk(data)
+
     async def close_case_if_empty(
         self, idwf: str, case_id: str, closer_resource_id: str | None = None
     ) -> bool:
@@ -397,6 +410,7 @@ class EngineService:
         )
         await self.db.execute(update_stmt)  # type: ignore[misc]
         return True
+
     # -- Shape tree traversal ------------------------------------------------ #
 
     async def get_shape(self, resource_id: str, idwf: str) -> dict | None:

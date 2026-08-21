@@ -1,4 +1,3 @@
-import sqlalchemy as sa
 from sqlalchemy import ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,6 +17,4 @@ class PermissionGroup(Base):
     path: Mapped[str] = mapped_column(
         String(255), nullable=False, index=True
     )  # resource path (e.g. 'root/modules/bpm')
-    idgroup: Mapped[int] = mapped_column(
-        Integer(), ForeignKey("groups.idgroup")
-    )
+    idgroup: Mapped[int] = mapped_column(Integer(), ForeignKey("groups.idgroup"))

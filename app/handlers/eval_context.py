@@ -33,15 +33,13 @@ class DataStorage:
     __slots__ = ("_data",)
 
     def __init__(self, data: dict[str, Any] | None = None):
-        self._data: defaultdict[str, DataStorage] = defaultdict(
-            lambda: DataStorage()
-        )
+        self._data: defaultdict[str, DataStorage] = defaultdict(lambda: DataStorage())
         if data:
             for k, v in data.items():
                 self._data[k] = (
-                    v if isinstance(v, DataStorage)
-                    else DataStorage(v) if isinstance(v, dict)
-                    else v
+                    v
+                    if isinstance(v, DataStorage)
+                    else DataStorage(v) if isinstance(v, dict) else v
                 )
 
     def __getattr__(self, name: str) -> Any:

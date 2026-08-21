@@ -44,6 +44,8 @@ class ModelUpdate(BaseModel):
     svg: str | None = Field(
         default=None, description="Raw SVG string to write to disk."
     )
+
+
 class ModelDuplicateRequest(BaseModel):
     """POST `/api/v1/models/duplicate` — clone a model to a new idwf."""
 

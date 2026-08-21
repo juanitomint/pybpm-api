@@ -47,20 +47,20 @@ async def get_current_user(
     try:
         result = await db.execute(select(User).where(User.idu == user_id))
         found = result.scalar_one_or_none()
-    except Exception as exc:  # noqa: BLE001 — DB connection failure; return 503.
+    except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Database unavailable: {exc.__class__.__name__}: {exc}",
             headers={"Retry-After": "5"},
         ) from exc
-    
+
     if not found:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User no longer exists",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     return found
 
 
@@ -72,20 +72,20 @@ async def login(
     try:
         result = await db.execute(select(User).where(User.nick == form_data.username))
         user = result.scalar_one_or_none()
-    except Exception as exc:  # noqa: BLE001 — DB connection failure; return 503 with actionable message.
+    except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Database unavailable: {exc.__class__.__name__}: {exc}",
             headers={"Retry-After": "5"},
         ) from exc
-    
+
     if not user or not _verify_password(form_data.password, user.pass_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     token = _create_token(user.idu)
     return {"access_token": token, "token_type": "bearer"}
 

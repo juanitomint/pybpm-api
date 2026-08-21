@@ -7,7 +7,6 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 # -- Request Schemas ----------------------------------------------------------- #
 
 
@@ -30,15 +29,19 @@ class EventScheduleCreate(BaseModel):
         description="Type of event trigger.",
     )
     idu: int | None = Field(
-        default=None, description="User ID who created this schedule entry (null for engine-created)."
+        default=None,
+        description="User ID who created this schedule entry (null for engine-created).",
     )
     status: str = Field(
-        default="pending", pattern=r"^(pending|fired|canceled)$",
+        default="pending",
+        pattern=r"^(pending|fired|canceled)$",
         description="Schedule status.",
     )
     data_json: dict[str, Any] | None = Field(
-        default=None, description="Optional JSON payload (e.g., parsed trigger expression)."
+        default=None,
+        description="Optional JSON payload (e.g., parsed trigger expression).",
     )
+
 
 class EventScheduleUpdate(BaseModel):
     """PATCH /api/v1/events/schedules/{idschedule} — update schedule fields."""

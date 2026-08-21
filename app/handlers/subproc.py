@@ -35,10 +35,8 @@ from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.bpm.engine import ENGINE_HANDLER_REGISTRY
-from app.handlers.flow import _safe_eval
 from app.services.bpm_service import gen_case, startcase
 
 logger = logging.getLogger(__name__)
@@ -58,7 +56,7 @@ class CollapsedSubprocessHandler:
     def stencil_id(cls) -> str:
         return cls._STENCIL_ID
 
-    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:  # noqa: ANN001, D401
+    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:
         """Execute CollapsedSubprocess logic — create children or wait for completion."""
         db = service.db
         idwf = token.idwf
@@ -74,24 +72,29 @@ class CollapsedSubprocessHandler:
         if not current_token:
             logger.warning(
                 "CollapsedSubprocessHandler: no token found for %s in case %s",
-                shape["resourceId"], case_id,
+                shape["resourceId"],
+                case_id,
             )
             return False
 
         # Persisted child case IDs stored during previous invocations
         child_cases = (current_token.external_data or {}).get("child") or []
 
-        parent_case_stmt = select(sa.text("*")).select_from(
-            sa.table("cases", sa.column("idcase"), sa.column("data"))
-        ).where(
-            sa.column("idcase") == case_id,
-            sa.column("idwf") == idwf,
+        _parent_case_stmt = (
+            select(sa.text("*"))
+            .select_from(sa.table("cases", sa.column("idcase"), sa.column("data")))
+            .where(
+                sa.column("idcase") == case_id,
+                sa.column("idwf") == idwf,
+            )
         )
         # Use service's internal DB query instead of raw table reference
         parent_data = {}
-        async for row in db.execute(sa.text(
-            "SELECT data FROM cases WHERE idcase=$1 AND idwf=$2"
-        ).bindparams(case_id, idwf)):
+        async for row in db.execute(
+            sa.text("SELECT data FROM cases WHERE idcase=$1 AND idwf=$2").bindparams(
+                case_id, idwf
+            )
+        ):
             parent_data = dict(row[0]) if row[0] else {}
 
         # ------------------------------------------------------------------ #
@@ -102,10 +105,14 @@ class CollapsedSubprocessHandler:
             cases_finished = 0
             still_open: list[str] = []
             for child_id in child_cases:
-                child_case_stmt = select(sa.text("*")).select_from(
-                    sa.table("cases", sa.column("idcase"), sa.column("status"))
-                ).where(
-                    sa.column("idcase") == child_id,
+                child_case_stmt = (
+                    select(sa.text("*"))
+                    .select_from(
+                        sa.table("cases", sa.column("idcase"), sa.column("status"))
+                    )
+                    .where(
+                        sa.column("idcase") == child_id,
+                    )
                 )
                 async for row in db.execute(child_case_stmt):
                     if row[0]["status"] != "open":  # type: ignore[index]
@@ -127,10 +134,12 @@ class CollapsedSubprocessHandler:
                     cond_expr = f"return({cond_expr})"
                 context = {"data": parent_data}
                 try:
-                    result = eval(cond_expr, {"__builtins__": {}}, context)  # noqa: S307
+                    result = eval(cond_expr, {"__builtins__": {}}, context)
                     is_finished = bool(result)
-                except Exception:
-                    logger.debug("CollapsedSubprocessHandler: completion condition eval failed")
+                except Exception:  # noqa: BLE001
+                    logger.debug(
+                        "CollapsedSubprocessHandler: completion condition eval failed"
+                    )
 
             if is_finished:
                 # All children done — move next on subprocess shape
@@ -150,7 +159,9 @@ class CollapsedSubprocessHandler:
         # ------------------------------------------------------------------ #
         if subprocesstype == "Embedded":
             # Embedded subprocesses execute inline — not yet implemented; skip
-            logger.debug("CollapsedSubprocessHandler: Embedded subprocesstype not yet supported")
+            logger.debug(
+                "CollapsedSubprocessHandler: Embedded subprocesstype not yet supported"
+            )
             return False
 
         if not entry:
@@ -182,16 +193,26 @@ class CollapsedSubprocessHandler:
             # Start one instance at a time; iterate DataStore items if connected
             if data_store_name and parent_data.get(data_store_name):
                 store_items = parent_data[data_store_name]
-                for item in (store_items if isinstance(store_items, list) else [store_items]):
+                for item in (
+                    store_items if isinstance(store_items, list) else [store_items]
+                ):
                     child_case_id = await gen_case(
-                        db, entry, parent_id=case_id,
-                        parent_data={**child_data.get("parent_data", {}), "parent_data": item},
+                        db,
+                        entry,
+                        parent_id=case_id,
+                        parent_data={
+                            **child_data.get("parent_data", {}),
+                            "parent_data": item,
+                        },
                     )
                     new_children.append(child_case_id)
             else:
                 # Single instance from shape
                 child_case_id = await gen_case(
-                    db, entry, parent_id=case_id, parent_data=child_data,
+                    db,
+                    entry,
+                    parent_id=case_id,
+                    parent_data=child_data,
                 )
                 new_children.append(child_case_id)
 
@@ -199,40 +220,57 @@ class CollapsedSubprocessHandler:
             # Start all instances at once — either from DataStore or startquantity
             if data_store_name and parent_data.get(data_store_name):
                 store_items = parent_data[data_store_name]
-                for item in (store_items if isinstance(store_items, list) else [store_items]):
+                for item in (
+                    store_items if isinstance(store_items, list) else [store_items]
+                ):
                     child_case_id = await gen_case(
-                        db, entry, parent_id=case_id,
-                        parent_data={**child_data.get("parent_data", {}), "parent_data": item},
+                        db,
+                        entry,
+                        parent_id=case_id,
+                        parent_data={
+                            **child_data.get("parent_data", {}),
+                            "parent_data": item,
+                        },
                     )
                     new_children.append(child_case_id)
             else:
                 start_qty = int(props.get("startquantity", 1)) or 1
                 for _ in range(start_qty):
                     child_case_id = await gen_case(
-                        db, entry, parent_id=case_id, parent_data=child_data,
+                        db,
+                        entry,
+                        parent_id=case_id,
+                        parent_data=child_data,
                     )
                     new_children.append(child_case_id)
 
         else:
             # Standard / None — exactly one child case (reuse if exists for Standard)
-            existing_stmt = select(sa.text("*")).select_from(
-                sa.table("cases", sa.column("idcase"), sa.column("data"))
-            ).where(
-                sa.column("idwf") == entry,
+            _existing_stmt = (
+                select(sa.text("*"))
+                .select_from(sa.table("cases", sa.column("idcase"), sa.column("data")))
+                .where(
+                    sa.column("idwf") == entry,
+                )
             )
             # Check for existing child case under this subprocess resourceId
             existing_child_id: str | None = None
-            for cid in (child_cases + new_children):
-                async for row in db.execute(sa.text(
-                    "SELECT 1 FROM cases WHERE idcase=$1 AND idwf=$2"
-                ).bindparams(cid, entry)):
+            for cid in child_cases + new_children:
+                async for row in db.execute(
+                    sa.text(
+                        "SELECT 1 FROM cases WHERE idcase=$1 AND idwf=$2"
+                    ).bindparams(cid, entry)
+                ):
                     if row[0]:  # type: ignore[index]
                         existing_child_id = cid
                         break
 
             if not existing_child_id:
                 child_case_id = await gen_case(
-                    db, entry, parent_id=case_id, parent_data=child_data,
+                    db,
+                    entry,
+                    parent_id=case_id,
+                    parent_data=child_data,
                 )
                 new_children.append(child_case_id)
 
@@ -243,7 +281,8 @@ class CollapsedSubprocessHandler:
             await startcase(db, entry, child_id, silent=True)
             logger.debug(
                 "CollapsedSubprocessHandler: started child case %s on model %s",
-                child_id, entry,
+                child_id,
+                entry,
             )
 
         # Merge new children with previously tracked ones (Sequential adds one at a time)
@@ -262,7 +301,10 @@ class CollapsedSubprocessHandler:
 
         # Set subprocess token to waiting with children list in external_data
         await service._set_token_status(
-            idwf, case_id, shape["resourceId"], "waiting",
+            idwf,
+            case_id,
+            shape["resourceId"],
+            "waiting",
             {"child": all_children},
         )
 
@@ -284,19 +326,27 @@ class InlineSubprocessHandler:
 
     _STENCIL_ID = "Subprocess"
 
-    VISUAL_ONLY = {
-        "TextAnnotation", "Association_Undirected", "Association_Unidirectional",
-        "Lane", "Pool", "CollapsedPool", "DataObject", "DataStore",
-    }
+    VISUAL_ONLY = frozenset(
+        {
+            "TextAnnotation",
+            "Association_Undirected",
+            "Association_Unidirectional",
+            "Lane",
+            "Pool",
+            "CollapsedPool",
+            "DataObject",
+            "DataStore",
+        }
+    )
 
     @classmethod
     def stencil_id(cls) -> str:
         return cls._STENCIL_ID
 
-    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:  # noqa: ANN001
+    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:
         idwf = token.idwf
         case_id = token.case_id
-        resource_id = shape["resourceId"]
+        _resource_id = shape["resourceId"]
 
         for child in shape.get("childShapes") or []:
             if not isinstance(child, dict):
@@ -321,8 +371,12 @@ class InlineSubprocessHandler:
         await service.mark_token_finished(token)
         return False
 
-# Auto-register at import time via the registry pattern.
-from app.api.bpm.engine import ENGINE_HANDLER_REGISTRY  # noqa: E402
 
-ENGINE_HANDLER_REGISTRY.register(CollapsedSubprocessHandler._STENCIL_ID, CollapsedSubprocessHandler)
-ENGINE_HANDLER_REGISTRY.register(InlineSubprocessHandler._STENCIL_ID, InlineSubprocessHandler)
+# Auto-register at import time via the registry pattern.
+
+ENGINE_HANDLER_REGISTRY.register(
+    CollapsedSubprocessHandler._STENCIL_ID, CollapsedSubprocessHandler
+)
+ENGINE_HANDLER_REGISTRY.register(
+    InlineSubprocessHandler._STENCIL_ID, InlineSubprocessHandler
+)

@@ -29,8 +29,9 @@ def _safe_eval(expression: str, context: dict[str, Any] | None = None) -> bool:
         local_ns = dict(context) if context else {}
         result = eval(code, {"__builtins__": {}}, local_ns)
         return bool(result)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return False
+
 
 def _eval_script(expression: str, context: dict[str, Any] | None = None) -> Any:
     """Evaluate a Python expression and return the raw value.
@@ -46,7 +47,7 @@ def _eval_script(expression: str, context: dict[str, Any] | None = None) -> Any:
         code = compile(tree, "<script>", "eval")
         local_ns = dict(context) if context else {}
         return eval(code, {"__builtins__": {}}, local_ns)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
 
 
@@ -78,10 +79,18 @@ class SequenceFlowHandler:
             if data_output_set and isinstance(data_output_set, dict):
                 items = data_output_set.get("items", [])
                 if items:
-                    inbound_token = await service.get_token(idwf, case_id, first_inbound["resourceId"])
-                    if inbound_token and hasattr(inbound_token, "external_data") and inbound_token.external_data:
+                    inbound_token = await service.get_token(
+                        idwf, case_id, first_inbound["resourceId"]
+                    )
+                    if (
+                        inbound_token
+                        and hasattr(inbound_token, "external_data")
+                        and inbound_token.external_data
+                    ):
                         for item in items:
-                            name = getattr(item, "name", None) or (item.get("name") if isinstance(item, dict) else None)
+                            name = getattr(item, "name", None) or (
+                                item.get("name") if isinstance(item, dict) else None
+                            )
                             if name:
                                 transport_data[name] = (
                                     inbound_token.external_data.get(name)
@@ -140,11 +149,14 @@ class MessageFlowHandler:
         resource_id = token.resource_id
 
         outgoing_shapes = shape.get("outgoing", []) or []
-        transport_data: dict[str, Any] = {}
 
         # For each outgoing shape that is IntermediateMessageEventCatching, advance it.
         for out_shape_ref in outgoing_shapes:
-            out_resource_id = out_shape_ref.get("resourceId") if isinstance(out_shape_ref, dict) else None
+            out_resource_id = (
+                out_shape_ref.get("resourceId")
+                if isinstance(out_shape_ref, dict)
+                else None
+            )
             if not out_resource_id:
                 continue
 

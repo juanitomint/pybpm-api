@@ -17,7 +17,6 @@ import sqlalchemy as sa
 from app.api.bpm.engine import ENGINE_HANDLER_REGISTRY
 from app.handlers.flow import _safe_eval
 
-
 # -- ParallelGateway -------------------------------------------------------- #
 
 
@@ -37,45 +36,49 @@ class ParallelGatewayHandler:
     def stencil_id(cls) -> str:
         return cls._STENCIL_ID
 
-    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:  # noqa: ANN001, D401
+    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:
         """Check inbound tokens; movenext if all finished, else wait."""
         idwf = token.idwf
         case_id = token.case_id
         resource_id = token.resource_id
-        
+
         inbound = await service.get_previous(resource_id, idwf)
-        
+
         has_all_finished = True
         for in_shape in inbound:
             in_rid = in_shape.get("resourceId") or in_shape.get("id", "")
             if not in_rid:
                 continue
-            
+
             # Check if token exists for this inbound shape
             in_token = await service.get_token(idwf, case_id, in_rid)
-            
+
             # If no token exists yet (not created), gateway must wait
             if not in_token:
                 has_all_finished = False
                 break
-            
+
             # Check token status
             status = getattr(in_token, "status", None)
             if status != "finished":
                 has_all_finished = False
                 break
-        
+
         if has_all_finished:
             await service.movenext(resource_id, idwf, case_id)
             return False
         else:
             from app.models.token import Token as TokenModel
-            
-            update_stmt = sa.update(TokenModel).where(
-                TokenModel.idwf == idwf,
-                TokenModel.case_id == case_id,
-                TokenModel.resource_id == resource_id,
-            ).values(status="waiting")
+
+            update_stmt = (
+                sa.update(TokenModel)
+                .where(
+                    TokenModel.idwf == idwf,
+                    TokenModel.case_id == case_id,
+                    TokenModel.resource_id == resource_id,
+                )
+                .values(status="waiting")
+            )
             await service.db.execute(update_stmt)  # type: ignore[misc]
             return False
 
@@ -100,7 +103,7 @@ def _parse_condition(cond_str: str) -> tuple[str, str]:
         return "==", ""
     for op in _OP_PRIORITY:
         if s.startswith(op):
-            rhs = s[len(op):].strip().strip("'\"")
+            rhs = s[len(op) :].strip().strip("'\"")
             return op, rhs
     return "==", s.strip("'\"")
 
@@ -122,7 +125,7 @@ class ExclusiveDatabasedGatewayHandler:
     def stencil_id(cls) -> str:
         return cls._STENCIL_ID
 
-    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:  # noqa: ANN001, D401
+    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:
         """Evaluate assignment expressions; choose exactly one outbound flow."""
         idwf = token.idwf
         case_id = token.case_id
@@ -130,7 +133,9 @@ class ExclusiveDatabasedGatewayHandler:
 
         props = shape.get("properties") or {}
         assignment_expr = getattr(props.get("gates_assignments"), "value", None) or (
-            props.get("gates_assignments") if isinstance(props.get("gates_assignments"), str) else ""
+            props.get("gates_assignments")
+            if isinstance(props.get("gates_assignments"), str)
+            else ""
         )
 
         # No assignments defined — fall through to default movenext behavior.
@@ -142,7 +147,8 @@ class ExclusiveDatabasedGatewayHandler:
         from app.models.case import BpmCase as _BpmCase
 
         fetch_stmt = sa.select(_BpmCase.data).where(
-            _BpmCase.idcase == case_id, _BpmCase.idwf == idwf,
+            _BpmCase.idcase == case_id,
+            _BpmCase.idwf == idwf,
         )
         fetched = await service.db.execute(fetch_stmt)  # type: ignore[misc]
         case_data = fetched.scalar_one_or_none() or {}
@@ -150,7 +156,9 @@ class ExclusiveDatabasedGatewayHandler:
             case_data = {}
 
         outgoing = shape.get("outgoing") or []
-        results: dict[str, tuple[dict, bool]] = {}  # rid -> (shape_info_dict, eval_bool)
+        results: dict[str, tuple[dict, bool]] = (
+            {}
+        )  # rid -> (shape_info_dict, eval_bool)
         match_count = 0
 
         for out_ref in outgoing:
@@ -169,7 +177,9 @@ class ExclusiveDatabasedGatewayHandler:
 
             out_props = out_shape.get("properties") or {}
             cond_str = getattr(out_props.get("conditionexpression"), "value", None) or (
-                out_props.get("conditionexpression") if isinstance(out_props.get("conditionexpression"), str) else ""
+                out_props.get("conditionexpression")
+                if isinstance(out_props.get("conditionexpression"), str)
+                else ""
             )
             if not cond_str:
                 continue
@@ -179,11 +189,11 @@ class ExclusiveDatabasedGatewayHandler:
             # Build comparison expression for _safe_eval. The assignment name is
             # resolved from case_data context; wrap in parens so it's a valid
             # mode='eval' expression: ``(approved) == 'yes'``.
-            eval_str = f"({assignment_expr}) {op} '{rhs}'"  # noqa: S307
+            eval_str = f"({assignment_expr}) {op} '{rhs}'"
 
             try:
                 eval_result = _safe_eval(eval_str, case_data)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 eval_result = False
 
             if eval_result:
@@ -203,7 +213,9 @@ class ExclusiveDatabasedGatewayHandler:
                     continue
                 out_props = out_shape.get("properties") or {}
                 cond_type = getattr(out_props.get("conditiontype"), "value", None) or (
-                    out_props.get("conditiontype") if isinstance(out_props.get("conditiontype"), str) else ""
+                    out_props.get("conditiontype")
+                    if isinstance(out_props.get("conditiontype"), str)
+                    else ""
                 )
                 if cond_type == "Default":
                     match_count += 1
@@ -225,13 +237,18 @@ class ExclusiveDatabasedGatewayHandler:
                 winning_shape = shape_ref
                 break
 
-        from app.models.token import Token as TokenModel, TokenHistory
+        from app.models.token import Token as TokenModel
+        from app.models.token import TokenHistory
 
-        update_stmt = sa.update(TokenModel).where(
-            TokenModel.idwf == idwf,
-            TokenModel.case_id == case_id,
-            TokenModel.resource_id == resource_id,
-        ).values(status="finished")
+        update_stmt = (
+            sa.update(TokenModel)
+            .where(
+                TokenModel.idwf == idwf,
+                TokenModel.case_id == case_id,
+                TokenModel.resource_id == resource_id,
+            )
+            .values(status="finished")
+        )
         await service.db.execute(update_stmt)  # type: ignore[misc]
 
         chosen_flow_props = (winning_shape or {}).get("properties") or {}
@@ -241,7 +258,11 @@ class ExclusiveDatabasedGatewayHandler:
             resource_id=resource_id,
             type="Exclusive_Databased_Gateway",
             status="finished",
-            name=str(chosen_flow_props.get("conditionexpression", "")) if isinstance(chosen_flow_props, dict) else "",
+            name=(
+                str(chosen_flow_props.get("conditionexpression", ""))
+                if isinstance(chosen_flow_props, dict)
+                else ""
+            ),
         )
         service.db.add(history)  # type: ignore[attr-defined]
 
@@ -266,7 +287,7 @@ class GenericGatewayHandler:
     def stencil_id(cls) -> str:
         return "_generic_gateway"  # sentinel; not dispatched by this key
 
-    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:  # noqa: ANN001, D401
+    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:
         """TODO (Phase 4b): full inclusive/event-based routing."""
         idwf = token.idwf
         case_id = token.case_id
@@ -298,7 +319,7 @@ class EventbasedGatewayHandler:
     def stencil_id(cls) -> str:
         return cls._STENCIL_ID
 
-    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:  # noqa: ANN001, D401
+    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:
         idwf = token.idwf
         case_id = token.case_id
         outgoing = shape.get("outgoing") or []
@@ -308,10 +329,17 @@ class EventbasedGatewayHandler:
                 await service.movenext(rid, idwf, case_id)
         return False
 
+
 # -- Auto-registration at import time --------------------------------------- #
 
-ENGINE_HANDLER_REGISTRY.register(ParallelGatewayHandler._STENCIL_ID, ParallelGatewayHandler)
-ENGINE_HANDLER_REGISTRY.register(ExclusiveDatabasedGatewayHandler._STENCIL_ID, ExclusiveDatabasedGatewayHandler)
-ENGINE_HANDLER_REGISTRY.register(EventbasedGatewayHandler._STENCIL_ID, EventbasedGatewayHandler)
+ENGINE_HANDLER_REGISTRY.register(
+    ParallelGatewayHandler._STENCIL_ID, ParallelGatewayHandler
+)
+ENGINE_HANDLER_REGISTRY.register(
+    ExclusiveDatabasedGatewayHandler._STENCIL_ID, ExclusiveDatabasedGatewayHandler
+)
+ENGINE_HANDLER_REGISTRY.register(
+    EventbasedGatewayHandler._STENCIL_ID, EventbasedGatewayHandler
+)
 for _stencil in GenericGatewayHandler._STENCIL_IDS:
     ENGINE_HANDLER_REGISTRY.register(_stencil, GenericGatewayHandler)

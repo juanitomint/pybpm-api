@@ -56,7 +56,9 @@ async def gen_case(
         if result.scalar_one_or_none() is None:
             break
     else:
-        raise RuntimeError(f"Could not allocate free case ID in '{idwf}' after 10 attempts")
+        raise RuntimeError(
+            f"Could not allocate free case ID in '{idwf}' after 10 attempts"
+        )
 
     child = BpmCase(
         idcase=candidate,
@@ -111,7 +113,9 @@ async def startcase(
     data = result.scalar_one_or_none()
 
     if not data or "childShapes" not in data:
-        logger.warning("startcase: no shape tree for model %s — cannot seed start tokens", idwf)
+        logger.warning(
+            "startcase: no shape tree for model %s — cannot seed start tokens", idwf
+        )
         return
 
     # Step 3: Find all StartNoneEvent shapes and set pending tokens on them

@@ -43,13 +43,19 @@ class SignalService:
 
         logger.info(
             "SignalService: threw signal %s (idwf=%s case=%s)",
-            name, idwf, case_id or "global",
+            name,
+            idwf,
+            case_id or "global",
         )
         return entry
 
     async def find_by_name(self, name: str) -> list[Signal]:
         """Fetch all signals matching a given name."""
-        stmt = sa_select(Signal).where(Signal.name == name).order_by(Signal.created_at.asc())
+        stmt = (
+            sa_select(Signal)
+            .where(Signal.name == name)
+            .order_by(Signal.created_at.asc())
+        )
         result = await self.db.execute(stmt)  # type: ignore[misc]
         return list(result.scalars().all())
 
@@ -66,10 +72,14 @@ class SignalService:
         Returns:
             List of ``Signal`` rows associated with the case/workflow, ordered by created_at ascending.
         """
-        stmt = sa_select(Signal).where(
-            Signal.case_id == case_id,
-            Signal.idwf == idwf,
-        ).order_by(Signal.created_at.asc())
+        stmt = (
+            sa_select(Signal)
+            .where(
+                Signal.case_id == case_id,
+                Signal.idwf == idwf,
+            )
+            .order_by(Signal.created_at.asc())
+        )
 
         result = await self.db.execute(stmt)  # type: ignore[misc]
         return list(result.scalars().all())
@@ -79,7 +89,7 @@ def get_signal_service(db: AsyncSession):
     """FastAPI dependency that yields a bound ``SignalService``."""
     _cache: dict[int, SignalService] = {}
 
-    def _get() -> SignalService:  # noqa: D401 — intentional factory closure
+    def _get() -> SignalService:
         key = id(db)
         if key not in _cache:
             _cache[key] = SignalService(db)

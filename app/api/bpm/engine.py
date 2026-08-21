@@ -17,8 +17,13 @@ These correspond to the legacy ``Engine::Newcase()``, ``Engine::Start()``,
 
 from __future__ import annotations
 
-#import uuid
+import logging
+
+logger = logging.getLogger(__name__)
+
+# import uuid
 import random
+
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy import select
 
@@ -83,6 +88,7 @@ ENGINE_HANDLER_REGISTRY = _EngineHandlerRegistry()
 
 # -- Default (fallback) handler ------------------------------------------------ #
 
+
 class _DefaultShapeHandler:
     """Fallback for any stencil ID with no registered phase-specific handler.
 
@@ -96,10 +102,13 @@ class _DefaultShapeHandler:
     def stencil_id(cls) -> str:
         return "_default"
 
-    async def handle(self, token, shape, service):  # noqa: ANN001, D401
+    async def handle(self, token, shape, service):
         """Advance the token to its outgoing shapes via movenext."""
         await service.movenext(token.resource_id, token.idwf, token.case_id)
-        return False  # handler consumed the token; dispatcher must NOT call movenext again
+        return (
+            False  # handler consumed the token; dispatcher must NOT call movenext again
+        )
+
 
 _DEFAULT_SHAPE_HANDLER = _DefaultShapeHandler()
 
@@ -249,30 +258,32 @@ async def start(
         idcase=body.idcase,
         tokens_created=tokens_created,
     )
-    
+
     # Create inbox message on case start (mirrors legacy $create_start_msg flag).
     try:
         from config import Config
-        
+
         create_start_msg = getattr(Config, "CREATE_START_MSG", False)
         if create_start_msg:
             model_data = model_row.data or {}
             properties = model_data.get("properties") or {}
             model_name = properties.get("name", body.idwf)
             documentation = properties.get("documentation", "")
-            
+
             # Build inbox message payload (mirrors legacy $msg array).
-            from app.services.inbox_service import InboxService, get_async_db as _get_async_db
-            
+            from app.services.inbox_service import InboxService
+            from app.services.inbox_service import get_async_db as _get_async_db
+
             async with _get_async_db() as inbox_db:
                 inbox_svc = InboxService(inbox_db)  # type: ignore[arg-type]
                 await inbox_svc.send_message(
                     sender_idu=user.idu,
                     recipient_idu=user.idu,  # self-message (legacy uses session user ID as both from/to)
                     subject=f"{model_name}:{body.idcase}",
-                    body=documentation or f"Case {body.idcase} started for model {body.idwf}",
+                    body=documentation
+                    or f"Case {body.idcase} started for model {body.idwf}",
                 )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.warning("Engine start: failed to create inbox message: %s", exc)
 
 
@@ -337,7 +348,9 @@ async def run(
                     )
 
                 stencil_id = (shape.get("stencil") or {}).get("id", "")
-                handler_cls = ENGINE_HANDLER_REGISTRY.get(stencil_id) or _DEFAULT_SHAPE_HANDLER
+                handler_cls = (
+                    ENGINE_HANDLER_REGISTRY.get(stencil_id) or _DEFAULT_SHAPE_HANDLER
+                )
                 if isinstance(handler_cls, type):
                     instance = handler_cls()
                 else:
@@ -358,6 +371,7 @@ async def run(
         raise
     return RunResponse(ok=True, msg="Engine executed successfully")
 
+
 # -- post --------------------------------------------------------------------- #
 
 
@@ -366,6 +380,7 @@ async def post(
     token_id: int,
     body: PostRequest,
     user: User = Depends(get_current_user),
+    service: EngineService = Depends(get_engine_service),
 ):
     """
     1. Looks up the token by ID via ``$this->bpm->get_token_byid($token_id)``.
@@ -565,7 +580,6 @@ async def gate_decision(
     await service.db.flush()
 
     # Get the chosen outgoing flow shape and movenext on it (mirrors PHP L467-469)
-    from sqlalchemy import select as sa_select
 
     flow_shape = await service.get_shape(body.flow_resource_id, idwf)
     if not flow_shape:
@@ -660,7 +674,9 @@ def _generate_case_id(length: int = 4) -> str:
     """
     # return uuid=uuid.uuid4().hex[:8].upper()
 
-    return "".join(chr(random.randint(65, 90)) for _ in range(4))  # mirrors chr(64+rand(1,26)) x 4 from legacy PHP
+    return "".join(
+        chr(random.randint(65, 90)) for _ in range(4)
+    )  # mirrors chr(64+rand(1,26)) x 4 from legacy PHP
 
 
 # -- Phase 4: Utility / internal methods ------------------------------------ #

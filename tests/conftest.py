@@ -5,36 +5,33 @@ own tables; isolation is achieved by using a fresh session per request via the
 test client's dependency override.
 """
 
-import asyncio
 import sys
+import uuid
 from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy import text
 
 # Import models so they register with _ModelBase.metadata before create_all runs.
 from app.models import (  # noqa: F401 — side-effect only; register tables
-    BpmCase, BpmModel, Group, Message, PermissionGroup,
-    PermissionRepository, Token, TokenHistory, User, UserGroup,
+    BpmCase,
+    BpmModel,
+    Group,
+    Message,
+    PermissionGroup,
+    PermissionRepository,
+    Token,
+    TokenHistory,
+    User,
+    UserGroup,
 )
 from app.models.base import Base as _ModelBase
 from extensions import get_async_db
 
-
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
-
-
-class _State:
-    """Holds the test DB engine and session factory across fixtures."""
-    _engine = None
-    _factory = None
-
-
-_state = _State()
 
 
 @pytest.fixture(scope="function", autouse=True)
@@ -46,8 +43,9 @@ async def setup_test_db():
     """
     import bcrypt as _bcrypt
 
-    _url = "sqlite+aiosqlite:///:memory:"
-    engine = create_async_engine(_url, echo=False)
+    # Unique per-test SQLite file to avoid collisions when loops share addresses.
+    db_path = f"sqlite+aiosqlite:///test_{uuid.uuid4().hex}.db"
+    engine = create_async_engine(db_path, echo=False)
     factory = async_sessionmaker(bind=engine, class_=AsyncSession)
 
     async with engine.begin() as conn:
@@ -63,14 +61,9 @@ async def setup_test_db():
         seed_session.add(admin)
         await seed_session.commit()
 
-    _state._engine = engine
-    _state._factory = factory
-
-    yield
+    yield {"engine": engine, "factory": factory}
 
     await engine.dispose()
-    _state._engine = None
-    _state._factory = None
 
 
 @pytest.fixture
@@ -79,10 +72,12 @@ async def test_client(setup_test_db):
 
     Patches get_async_db both as a FastAPI dependency override AND at the module
     level so inbox.py's direct calls (which import it once at load time) also use
-    the test engine instead of production Postgres.
+    the test engine instead of production Postgres. Also patches dashboard's
+    _get_db which uses its own local import from extensions.
     """
     from main import app
 
+    db_info = setup_test_db
 
     class _TestDbGenerator:
         def __init__(self, factory):
@@ -96,18 +91,29 @@ async def test_client(setup_test_db):
                     if session.in_transaction():
                         await session.rollback()
 
-
     async def override_get_async_db():  # type: ignore[misc]
-        gen = _TestDbGenerator(_state._factory)
+        gen = _TestDbGenerator(db_info["factory"])
+        async for session in gen:
+            yield session
+
+    async def override_dashboard_get_db():  # type: ignore[misc]
+        gen = _TestDbGenerator(db_info["factory"])
         async for session in gen:
             yield session
 
     # Patch FastAPI dependency injection (for Depends-based endpoints).
     app.dependency_overrides[get_async_db] = override_get_async_db
 
-    # Also patch at module level so inbox.py's direct calls use test engine.
+    # Also patch dashboard's _get_db which uses its own import.
+    from app.api.dashboard import _get_db as _dashboard_get_db
+    app.dependency_overrides[_dashboard_get_db] = override_dashboard_get_db
+
+    # Patch at module level so inbox.py's direct calls use test engine.
     import extensions as _ext
     _ext.get_async_db = override_get_async_db
+    # Also patch async_session_factory.kw['bind'] so _assign_contains (dashboard)
+    # detects the SQLite test engine instead of production PostgreSQL.
+    _ext.async_session_factory.kw["bind"] = db_info["engine"]
     import app.api.inbox as _inbox_mod
     _inbox_mod.get_async_db = override_get_async_db
 
@@ -118,3 +124,18 @@ async def test_client(setup_test_db):
         finally:
             app.dependency_overrides.clear()
 
+
+@pytest.fixture
+async def seed_token(setup_test_db):
+    """Seed a Token row in the test DB so lock/unlock endpoints have something to find.
+
+    Creates its own session within the same event loop as setup_test_db (which is
+    also function-scoped, so it shares the running loop).
+    """
+
+    factory = setup_test_db["factory"]
+    token = Token(resource_id="r1", idwf="w1", case_id="c1", type="Task", assign=[1])
+    async with factory() as s:
+        s.add(token)
+        await s.commit()
+    return token

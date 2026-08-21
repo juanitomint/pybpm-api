@@ -6,7 +6,7 @@ adapted for PostgreSQL via SQLAlchemy.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timezone
+from datetime import datetime
 
 import sqlalchemy as sa
 from sqlalchemy import DateTime, ForeignKey, Integer, String, func
@@ -31,8 +31,12 @@ class Message(Base):
     to_idu: Mapped[int] = mapped_column(
         ForeignKey("users.idu"), index=True  # recipient user ID
     )
-    from_idu: Mapped[int | None] = mapped_column(ForeignKey("users.idu"))  # sender; null for system messages
-    subject: Mapped[str] = mapped_column(String(512), nullable=False, default="No Subject")
+    from_idu: Mapped[int | None] = mapped_column(
+        ForeignKey("users.idu")
+    )  # sender; null for system messages
+    subject: Mapped[str] = mapped_column(
+        String(512), nullable=False, default="No Subject"
+    )
     body: Mapped[str | None] = mapped_column(sa.Text(), nullable=True)
     folder: Mapped[str] = mapped_column(
         String(32), index=True, server_default="inbox"  # inbox | star | trash | outbox

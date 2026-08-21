@@ -39,69 +39,69 @@ logger = logging.getLogger(__name__)
 """Helper functions for Case Manager endpoints."""
 
 ICON_MAP = {
-    'SequenceFlow': 'connector/sequenceflow.png',
-    'EndNoneEvent': 'endevent/none.png',
-    'EndMessageEvent': 'endevent/message.png',
-    'StartMessageEvent ': 'startevent/message.png',
-    'Task': 'activity/task.png',
-    'CollapsedSubprocess': 'activity/event.subprocess.collapsed.png',
-    1: 'activity/event.subprocess.png',
-    2: 'activity/expanded.subprocess.png',
-    'SubProcess': 'activity/subprocess.png',
-    4: 'activity/task.png',
-    5: 'artifact/group.png',
-    'TextAnnotation': 'artifact/text.annotation.png',
-    'IntermediateCancelEvent': 'catching/cancel.png',
-    'IntermediateCompensationEventCatching': 'catching/compensation.png',
-    'IntermediateConditionalEvent': 'catching/conditional.png',
-    'IntermediateErrorEvent': 'catching/error.png',
-    'IntermediateEscalationEvent': 'catching/escalation.png',
-    'IntermediateLinkEventCatching': 'catching/link.png',
-    'IntermediateMessageEventCatching': 'catching/message.png',
-    'IntermediateParallelMultipleEventCatching': 'catching/multiple.parallel.png',
-    'IntermediateMultipleEventCatching': 'catching/multiple.png',
-    'IntermediateSignalEventCatching': 'catching/signal.png',
-    'IntermediateTimerEvent': 'catching/timer.png',
-    'Association_Bidirectional': 'connector/association.bidirectional.png',
-    'Association_Undirected': 'connector/association.undirected.png',
-    'Association_Unidirectional': 'connector/association.unidirectional.png',
-    'MessageFlow': 'connector/messageflow.png',
-    'DataObject': 'dataobject/data.object.png',
-    'DataStore': 'dataobject/data.store.png',
-    'ITSystem': 'dataobject/it.system.png',
-    'Message': 'dataobject/message.png',
-    'EndCancelEvent': 'endevent/cancel.png',
-    'EndCompensationEvent': 'endevent/compensation.png',
-    'EndErrorEvent': 'endevent/error.png',
-    'EndEscalationEvent': 'endevent/escalation.png',
-    'EndMultipleEvent': 'endevent/multiple.png',
-    'EndSignalEvent': 'endevent/signal.png',
-    'EndTerminateEvent': 'endevent/terminate.png',
-    'ComplexGateway': 'gateway/complex.png',
-    'EventbasedGateway': 'gateway/eventbased.png',
-    'Exclusive_Databased_Gateway': 'gateway/exclusive.databased.png',
-    'InclusiveGateway': 'gateway/inclusive.png',
-    'ParallelGateway': 'gateway/parallel.png',
-    'StartCompensationEvent': 'startevent/compensation.png',
-    'StartConditionalEvent': 'startevent/conditional.png',
-    'StartErrorEvent': 'startevent/error.png',
-    'StartEscalationEvent': 'startevent/escalation.png',
-    'StartMessageEvent': 'startevent/message.png',
-    'StartParallelMultipleEvent': 'startevent/multiple.parallel.png',
-    'StartMultipleEvent': 'startevent/multiple.png',
-    'StartNoneEvent': 'startevent/none.png',
-    'StartSignalEvent': 'startevent/signal.png',
-    'StartTimerEvent': 'startevent/timer.png',
-    'Lane': 'swimlane/lane.png',
-    'Pool': 'swimlane/pool.png',
-    'processparticipant': 'swimlane/process.participant.png',
-    'IntermediateCompensationEventThrowing': 'throwing/compensation.png',
-    'IntermediateEscalationEventThrowing': 'throwing/escalation.png',
-    'IntermediateLinkEventThrowing': 'throwing/link.png',
-    'IntermediateMessageEventThrowing': 'throwing/message.png',
-    'IntermediateMultipleEventThrowing': 'throwing/multiple.png',
-    'IntermediateEvent': 'throwing/none.png',
-    'IntermediateSignalEventThrowing': 'throwing/signal.png',
+    "SequenceFlow": "connector/sequenceflow.png",
+    "EndNoneEvent": "endevent/none.png",
+    "EndMessageEvent": "endevent/message.png",
+    "StartMessageEvent ": "startevent/message.png",
+    "Task": "activity/task.png",
+    "CollapsedSubprocess": "activity/event.subprocess.collapsed.png",
+    1: "activity/event.subprocess.png",
+    2: "activity/expanded.subprocess.png",
+    "SubProcess": "activity/subprocess.png",
+    4: "activity/task.png",
+    5: "artifact/group.png",
+    "TextAnnotation": "artifact/text.annotation.png",
+    "IntermediateCancelEvent": "catching/cancel.png",
+    "IntermediateCompensationEventCatching": "catching/compensation.png",
+    "IntermediateConditionalEvent": "catching/conditional.png",
+    "IntermediateErrorEvent": "catching/error.png",
+    "IntermediateEscalationEvent": "catching/escalation.png",
+    "IntermediateLinkEventCatching": "catching/link.png",
+    "IntermediateMessageEventCatching": "catching/message.png",
+    "IntermediateParallelMultipleEventCatching": "catching/multiple.parallel.png",
+    "IntermediateMultipleEventCatching": "catching/multiple.png",
+    "IntermediateSignalEventCatching": "catching/signal.png",
+    "IntermediateTimerEvent": "catching/timer.png",
+    "Association_Bidirectional": "connector/association.bidirectional.png",
+    "Association_Undirected": "connector/association.undirected.png",
+    "Association_Unidirectional": "connector/association.unidirectional.png",
+    "MessageFlow": "connector/messageflow.png",
+    "DataObject": "dataobject/data.object.png",
+    "DataStore": "dataobject/data.store.png",
+    "ITSystem": "dataobject/it.system.png",
+    "Message": "dataobject/message.png",
+    "EndCancelEvent": "endevent/cancel.png",
+    "EndCompensationEvent": "endevent/compensation.png",
+    "EndErrorEvent": "endevent/error.png",
+    "EndEscalationEvent": "endevent/escalation.png",
+    "EndMultipleEvent": "endevent/multiple.png",
+    "EndSignalEvent": "endevent/signal.png",
+    "EndTerminateEvent": "endevent/terminate.png",
+    "ComplexGateway": "gateway/complex.png",
+    "EventbasedGateway": "gateway/eventbased.png",
+    "Exclusive_Databased_Gateway": "gateway/exclusive.databased.png",
+    "InclusiveGateway": "gateway/inclusive.png",
+    "ParallelGateway": "gateway/parallel.png",
+    "StartCompensationEvent": "startevent/compensation.png",
+    "StartConditionalEvent": "startevent/conditional.png",
+    "StartErrorEvent": "startevent/error.png",
+    "StartEscalationEvent": "startevent/escalation.png",
+    "StartMessageEvent": "startevent/message.png",
+    "StartParallelMultipleEvent": "startevent/multiple.parallel.png",
+    "StartMultipleEvent": "startevent/multiple.png",
+    "StartNoneEvent": "startevent/none.png",
+    "StartSignalEvent": "startevent/signal.png",
+    "StartTimerEvent": "startevent/timer.png",
+    "Lane": "swimlane/lane.png",
+    "Pool": "swimlane/pool.png",
+    "processparticipant": "swimlane/process.participant.png",
+    "IntermediateCompensationEventThrowing": "throwing/compensation.png",
+    "IntermediateEscalationEventThrowing": "throwing/escalation.png",
+    "IntermediateLinkEventThrowing": "throwing/link.png",
+    "IntermediateMessageEventThrowing": "throwing/message.png",
+    "IntermediateMultipleEventThrowing": "throwing/multiple.png",
+    "IntermediateEvent": "throwing/none.png",
+    "IntermediateSignalEventThrowing": "throwing/signal.png",
 }
 
 
@@ -184,9 +184,11 @@ async def read_cases(
                 "idwf": case.idwf,
                 "iduser": iduser or 0,
                 "status": case.status,
-                "checkdate": case.created_at.strftime("%Y-%m-%d %H:%M:%S")
-                if case.created_at
-                else "",
+                "checkdate": (
+                    case.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                    if case.created_at
+                    else ""
+                ),
                 "user": user_name,
                 "date": check_date_str,
             }
@@ -238,11 +240,10 @@ async def get_token_status(
 
     from app.models.user import User
 
-
     # Convert to Ext.js format matching legacy Case_manager.php
     rows = []
     for token in tokens:
-        assigned_ids = getattr(token, 'assign', []) or []
+        assigned_ids = getattr(token, "assign", []) or []
         primary_uid = assigned_ids[0] if assigned_ids else None
 
         # Get user nick (legacy uses $user->nick, not name)
@@ -258,7 +259,7 @@ async def get_token_status(
                 user_nick = user.name or "admin"
 
         # Get lockedBy user nick (legacy field)
-        locked_by_uid = getattr(token, 'locked_by', None)
+        locked_by_uid = getattr(token, "locked_by", None)
         locked_by_nick = None
         if locked_by_uid:
             lock_user_stmt = select(User).where(User.idu == locked_by_uid)
@@ -269,17 +270,23 @@ async def get_token_status(
 
         # Format date as MM/DD/YYYY (legacy dateFmt uses this format)
         check_date_str = ""
-        token_check_date = getattr(token, 'checkdate', None) or getattr(token, 'updated_at', None)
+        token_check_date = getattr(token, "checkdate", None) or getattr(
+            token, "updated_at", None
+        )
         if token_check_date:
             check_date_str = token_check_date.strftime("%m/%d/%Y")
 
         # Get icon based on token type (matches legacy $this->bpm->get_icon())
-        token_type = getattr(token, 'type', '') or ''
+        token_type = getattr(token, "type", "") or ""
         icon_path = get_icon(token_type) or f"{token_type}.png"
-        icon_html = f"<img src='/static/editor/stencilsets/bpmn2.0/icons/{icon_path}' />" if icon_path else ""
+        icon_html = (
+            f"<img src='/static/editor/stencilsets/bpmn2.0/icons/{icon_path}' />"
+            if icon_path
+            else ""
+        )
 
         # Get title from name field (legacy: $token['title']=$token['name'])
-        token_title = getattr(token, 'name', '') or ''
+        token_title = getattr(token, "name", "") or ""
 
         # Calculate microtime from check_date (Unix timestamp with microseconds)
         microtime_val = 0.0
@@ -327,7 +334,7 @@ async def get_token_status(
                 "case": token.case_id,
                 "resourceId": token.resource_id,
                 "type": token.type,
-                "run": getattr(token, 'run_count', 0) or 0,
+                "run": getattr(token, "run_count", 0) or 0,
                 "checkdate": check_date_full,
                 "microtime": microtime_val,
                 "interval": interval_obj,

@@ -20,7 +20,6 @@ import logging
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.event_schedule import EventSchedule
 from app.schemas.event_schedule import (
@@ -165,9 +164,7 @@ async def update(
     Can transition status (e.g., pending -> fired by scheduler, or pending ->
     canceled by admin), reschedule to a new trigger_time, or update data_json.
     """
-    entry_stmt = select(EventSchedule).where(
-        EventSchedule.idschedule == idschedule
-    )
+    entry_stmt = select(EventSchedule).where(EventSchedule.idschedule == idschedule)
     result = await service.db.execute(entry_stmt)  # type: ignore[misc]
     entry = result.scalar_one_or_none()
     if not entry:
@@ -197,7 +194,9 @@ async def update(
     await service.db.execute(stmt)  # type: ignore[misc]
     await service.db.flush()
 
-    logger.info("Updated event_schedule %s: %s", idschedule, ", ".join(update_data.keys()))
+    logger.info(
+        "Updated event_schedule %s: %s", idschedule, ", ".join(update_data.keys())
+    )
     return EventScheduleOperationResponse(
         ok=True, idschedule=idschedule, detail="Event schedule updated"
     )
@@ -219,9 +218,7 @@ async def cancel(
 
     Sets status to 'canceled'. Fired or already-canceled entries return 409 Conflict.
     """
-    entry_stmt = select(EventSchedule).where(
-        EventSchedule.idschedule == idschedule
-    )
+    entry_stmt = select(EventSchedule).where(EventSchedule.idschedule == idschedule)
     result = await service.db.execute(entry_stmt)  # type: ignore[misc]
     entry = result.scalar_one_or_none()
     if not entry:

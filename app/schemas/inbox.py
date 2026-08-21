@@ -6,8 +6,7 @@ Used by ``app.api.inbox`` router under prefix ``/api/v1/inbox``.
 import datetime as dt
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
-
+from pydantic import BaseModel, Field
 
 # -- Request Schemas ----------------------------------------------------------- #
 
@@ -77,6 +76,8 @@ class FolderMessagesResponse(BaseModel):
     page: int = 1
     per_page: int = 15
     total_pages: int
+
+
 class FilterMessagesRequest(BaseModel):
     """POST /inbox/filter/ — filter messages by key-value pairs.
 
@@ -89,6 +90,7 @@ class FilterMessagesRequest(BaseModel):
     star: bool | None = None
     tag: str | None = None
 
+
 class CountFiltersRequest(BaseModel):
     """POST /inbox/counts/ — filter counts by key-value pairs.
 
@@ -100,6 +102,7 @@ class CountFiltersRequest(BaseModel):
     read: bool | None = None
     star: bool | None = None
     tag: str | None = None
+
 
 class MessageCounts(BaseModel):
     """GET /inbox/counts/ — folder and unread counts for the current user."""
@@ -133,4 +136,3 @@ class MessageOperationResponse(BaseModel):
     ok: bool = True
     msg: str
     data: dict[str, Any] | None = None
-

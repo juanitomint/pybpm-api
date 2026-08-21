@@ -69,7 +69,7 @@ class TaskListItem(BaseModel):
     time_elapsed: str = ""  # human-readable elapsed since check_date
     model_name: str = ""  # resolved from BpmModel on read
     idwf: str
-    case_id: str = Field(alias="caseId")
+    case_id: str = Field(alias="case_id")
     locked_by: int | None = None  # raw Token.locked_by FK value
     locked: bool = False  # True if Token.locked_by is not NULL
     locked_by_nick: str | None = None  # User.nick of the locker (NULL when unlocked)

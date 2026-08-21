@@ -19,7 +19,9 @@ class Token(Base):
     __tablename__ = "tokens"
 
     # Composite PK — (resource_id, id_wf) uniquely identifies a token within a case.
-    resource_id: Mapped[str] = mapped_column(String(1024), nullable=False, primary_key=True)
+    resource_id: Mapped[str] = mapped_column(
+        String(1024), nullable=False, primary_key=True
+    )
     idwf: Mapped[str] = mapped_column(
         String(255),
         ForeignKey("models.idwf", ondelete="CASCADE"),

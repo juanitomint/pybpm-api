@@ -6,8 +6,6 @@ matching catcher can discover them later, enabling cross-case / cross-model
 signal communication between BPMN cases.
 """
 
-from datetime import UTC, datetime
-
 import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -36,7 +34,7 @@ class Signal(Base):
 
 
 # Ensure BpmCase has the one-to-many relationship. Added here to avoid circular imports at module level.
-from app.models.case import BpmCase  # noqa: E402 — intentionally late import
+from app.models.case import BpmCase
 
 BpmCase.signals_thrown = relationship(  # type: ignore[attr-defined]
     "Signal",

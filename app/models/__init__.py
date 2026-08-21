@@ -10,8 +10,8 @@ from app.models.user import User
 from app.models.user_group import UserGroup
 
 __all__ = [
-    "BpmModel",
     "BpmCase",
+    "BpmModel",
     "EventSchedule",
     "Group",
     "Message",

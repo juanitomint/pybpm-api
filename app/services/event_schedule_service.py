@@ -9,17 +9,16 @@ Mirrors legacy PHP timer/event trigger semantics where tokens transition from
 the event_schedules table so the scheduler can efficiently query "what's due now?".
 """
 
-from datetime import UTC, datetime
 import logging
-from typing import Any
+from datetime import UTC, datetime
 
 import sqlalchemy as sa
 from fastapi import Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from extensions import get_async_db
 
 from app.models.event_schedule import EventSchedule
+from extensions import get_async_db
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +75,10 @@ class EventScheduleService:
         await self.db.flush()
         logger.debug(
             "Created event_schedule: idschedule=%s type=%s resource=%s trigger=%s",
-            entry.idschedule, schedule_type, resource_id, trigger_time.isoformat(),
+            entry.idschedule,
+            schedule_type,
+            resource_id,
+            trigger_time.isoformat(),
         )
         return entry
 
@@ -92,9 +94,7 @@ class EventScheduleService:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_due_schedules(
-        self, limit: int = 100
-    ) -> list[EventSchedule]:
+    async def get_due_schedules(self, limit: int = 100) -> list[EventSchedule]:
         """Fetch pending schedules that are due now (trigger_time <= now).
 
         Used by the scheduler to find events that should fire. Results are ordered

@@ -20,7 +20,9 @@ class PermissionRepository(Base):
     path: Mapped[str] = mapped_column(
         String(255), nullable=False, index=True
     )  # resource path
-    source: Mapped[str | None] = mapped_column(String(64))  # MongoDB 'properties.source' (e.g. 'Setup')
+    source: Mapped[str | None] = mapped_column(
+        String(64)
+    )  # MongoDB 'properties.source' (e.g. 'Setup')
     check_date: Mapped[sa.DateTime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )  # MongoDB 'properties.checkdate'

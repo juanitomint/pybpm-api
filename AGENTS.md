@@ -118,32 +118,28 @@ uv run pytest
    uv run uvicorn main:app --reload
    ```
 
-### Testing (non-interactive)
-Use `APP_PORT=5001` when running the server for testing, scripting, or tooling — keeps it off port 5000 so `make run` can stay attached to an interactive console without conflict.
+### ⚠️ Port Rules — CRITICAL
+
+**Port 5000 is reserved for `make run` (the interactive dev server). NEVER kill it.**
+
+When you need a separate server instance for testing, scripting, or tooling, always use **port 5001**:
 
 ```bash
-# Run on port 5001 (does not block make run / port 5000)
+# ✅ CORRECT — test on port 5001, dev server stays alive on 5000:
 APP_PORT=5001 uv run uvicorn main:app --host 0.0.0.0 --port 5001
 
 # Or via .env override:
 echo "APP_PORT=5001" >> .env && uv run uvicorn main:app --reload
 ```
 
-When using `APP_PORT=5001`, point your clients (editor, UI, scripts) at `http://localhost:5001` instead of the default 5000.
-
-### ⚠️ CRITICAL — Port 5000 is the Dev Server
-**NEVER kill port 5000.** It runs your interactive `make run` server.
-Always use `APP_PORT=5001` (or another high port) for testing, scripting, or tooling.
+When using `APP_PORT=5001`, point clients (editor, UI, scripts) at `http://localhost:5001` instead of the default `http://localhost:5000`.
 
 ```bash
-# CORRECT — test on port 5001, dev server keeps running on 5000:
-APP_PORT=5001 uv run python -m main
-
-# WRONG — kills your dev server:
+# ❌ WRONG — kills your dev server:
 fuser -k 5000/tcp   # NEVER do this unless explicitly cleaning up stale processes
-
 ```
-## Linting & Formatting
+
+### Linting & Formatting
 
 After making any code changes, always run:
 
@@ -180,4 +176,3 @@ Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`
 - **MAJOR** — incompatible API changes (`BREAKING CHANGE:` footer or `!` after type)
 - **MINOR** — new functionality added backwards-compatibly
 - **PATCH** — backward-compatible bug fixes
-```

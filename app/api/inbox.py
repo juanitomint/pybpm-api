@@ -27,7 +27,6 @@ from app.models.user import User
 from app.schemas.inbox import (
     CountFiltersRequest,
     FilterMessagesRequest,
-    FolderMessagesRequest,
     FolderMessagesResponse,
     MessageActionRequest,
     MessageActionResponse,
@@ -46,6 +45,7 @@ router = APIRouter(prefix="/inbox", tags=["inbox"])
 
 async def _get_db() -> AsyncSession:  # pragma: no cover — FastAPI dep wiring
     from extensions import get_async_db
+
     async for session in get_async_db():
         yield session
 
@@ -78,6 +78,7 @@ async def index(
         total_pages=(total_count + per_page - 1) // per_page if per_page else 0,
     )
 
+
 @router.post("/counts/", response_model=MessageCounts, status_code=status.HTTP_200_OK)
 async def count_msgs(
     body: CountFiltersRequest = CountFiltersRequest(),
@@ -96,7 +97,9 @@ async def count_msgs(
     return MessageCounts(**counts)
 
 
-@router.post("/filter/", response_model=FolderMessagesResponse, status_code=status.HTTP_200_OK)
+@router.post(
+    "/filter/", response_model=FolderMessagesResponse, status_code=status.HTTP_200_OK
+)
 async def show_msgs_by_filter(
     body: FilterMessagesRequest = FilterMessagesRequest(),
     user: User = Depends(get_current_user),
@@ -121,7 +124,10 @@ async def show_msgs_by_filter(
     )
     return response
 
-@router.get("/message/{msgid}/", response_model=MessageRead, status_code=status.HTTP_200_OK)
+
+@router.get(
+    "/message/{msgid}/", response_model=MessageRead, status_code=status.HTTP_200_OK
+)
 async def get_msg(
     msgid: int,
     user: User = Depends(get_current_user),
@@ -144,7 +150,9 @@ async def get_msg(
 
 
 @router.patch(
-    "/message/{msgid}/", response_model=MessageActionResponse, status_code=status.HTTP_200_OK
+    "/message/{msgid}/",
+    response_model=MessageActionResponse,
+    status_code=status.HTTP_200_OK,
 )
 async def action_message(
     msgid: int,
@@ -160,7 +168,11 @@ async def action_message(
             message = await svc.toggle_star(msgid, user_idu=user.idu)
             return MessageActionResponse(
                 ok=True,
-                msg="Star toggled" if not bool(message.is_starred) else "Message starred",
+                msg=(
+                    "Star toggled"
+                    if not bool(message.is_starred)
+                    else "Message starred"
+                ),
                 starred=bool(message.is_starred),
             )
         except ValueError as exc:
@@ -195,7 +207,11 @@ async def action_message(
         )
 
 
-@router.post("/send/", response_model=MessageOperationResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/send/",
+    response_model=MessageOperationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def send(
     body: SendMessageRequest,
     user: User = Depends(get_current_user),
@@ -223,9 +239,10 @@ async def send(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
-
 @router.delete(
-    "/message/{msgid}/", response_model=MessageOperationResponse, status_code=status.HTTP_200_OK
+    "/message/{msgid}/",
+    response_model=MessageOperationResponse,
+    status_code=status.HTTP_200_OK,
 )
 async def remove_msg(
     msgid: int,

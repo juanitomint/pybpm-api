@@ -466,23 +466,23 @@ async def transition_task(
     }
 
 
-class TaskLockRequest(BaseModel):
-    resource_id: str
-    idwf: str
-    case_id: str
-
-
-@router.patch("/tasks/lock", status_code=status.HTTP_200_OK)
+@router.patch(
+    "/tasks/lock/{resource_id}/{case_id}/{idwf}",
+    status_code=status.HTTP_200_OK,
+)
 async def lock_task(
-    body: TaskLockRequest,
+    resource_id: str,
+    case_id: str,
+    idwf: str,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(_get_db),
 ):
+    """Lock a task token — set ``locked_by`` to the current user."""
     stmt = select(Token).where(
         and_(
-            Token.resource_id == body.resource_id,
-            Token.idwf == body.idwf,
-            Token.case_id == body.case_id,
+            Token.resource_id == resource_id,
+            Token.idwf == idwf,
+            Token.case_id == case_id,
         )
     )
     result = await db.execute(stmt)
@@ -491,27 +491,35 @@ async def lock_task(
     if token is None:
         raise HTTPException(
             status_code=404,
-            detail=f"Token '{body.resource_id}'@'{body.idwf}' not found",
+            detail=f"Token '{resource_id}'@'{idwf}' not found",
         )
 
     token.locked_by = user.idu  # type: ignore[assignment]
     await db.commit()
 
-    return {"resourceId": body.resource_id, "idwf": body.idwf, "locked_by": user.idu}
+    return {"resourceId": resource_id, "idwf": idwf, "locked_by": user.idu}
 
 
-@router.patch("/tasks/unlock", status_code=status.HTTP_200_OK)
+@router.patch(
+    "/tasks/unlock/{resource_id}/{case_id}/{idwf}",
+    status_code=status.HTTP_200_OK,
+)
 async def unlock_task(
-    body: TaskLockRequest,
+    resource_id: str,
+    case_id: str,
+    idwf: str,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(_get_db),
 ):
-    """Unlock a task token (clear the current user's lock)."""
+    """Unlock a task token — clear ``locked_by`` if the current user holds it.
+
+    Requires Token.locked_by == caller's idu AND caller in token.assign list.
+    """
     stmt = select(Token).where(
         and_(
-            Token.resource_id == body.resource_id,
-            Token.idwf == body.idwf,
-            Token.case_id == body.case_id,
+            Token.resource_id == resource_id,
+            Token.idwf == idwf,
+            Token.case_id == case_id,
             Token.locked_by == user.idu,
             _assign_contains(user.idu),
         )
@@ -522,10 +530,10 @@ async def unlock_task(
     if token is None:
         raise HTTPException(
             status_code=404,
-            detail=f"Token '{body.resource_id}'@'{body.idwf}' not found",
+            detail=f"Token '{resource_id}'@'{idwf}' not found",
         )
 
     token.locked_by = None  # type: ignore[assignment]
     await db.commit()
 
-    return {"resourceId": body.resource_id, "idwf": body.idwf, "locked_by": None}
+    return {"resourceId": resource_id, "idwf": idwf, "locked_by": None}

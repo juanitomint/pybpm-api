@@ -456,7 +456,7 @@ async def task_done(
     return TaskCompleteResponse(ok=True, msg="Task completed successfully")
 
 
-class TaskLockRequest(BaseModel):
+class TaskTransitionRequest(BaseModel):
     resource_id: str
     idwf: str
     case_id: str
@@ -464,7 +464,7 @@ class TaskLockRequest(BaseModel):
 
 @router.patch("/tasks/lock", status_code=status.HTTP_200_OK)
 async def lock_task(
-    body: TaskLockRequest,
+    body: TaskTransitionRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(_get_db),
 ):
@@ -493,7 +493,7 @@ async def lock_task(
 
 @router.patch("/tasks/unlock", status_code=status.HTTP_200_OK)
 async def unlock_task(
-    body: TaskLockRequest,
+    body: TaskTransitionRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(_get_db),
 ):
@@ -526,3 +526,46 @@ async def unlock_task(
     await db.commit()
 
     return {"resourceId": body.resource_id, "idwf": body.idwf, "locked_by": None}
+
+
+@router.patch("/tasks/validate", status_code=status.HTTP_200_OK)
+async def validate_task(
+    body: TaskTransitionRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(_get_db),
+):
+    """Validate a task token — set ``status`` to ``validating``.
+
+    Safety: caller must be in the token's assign list AND either hold the lock
+    (``locked_by == caller.idu``) or the row is already unlocked (``locked_by IS NULL``).
+    This prevents non-assignees from modifying task lifecycle state.
+    """
+    stmt = select(Token).where(
+        and_(
+            Token.resource_id == body.resource_id,
+            Token.idwf == body.idwf,
+            Token.case_id == body.case_id,
+            or_(
+                Token.locked_by == user.idu,
+                Token.locked_by.is_(None),
+            ),
+            _assign_contains(user.idu),
+        )
+    )
+    result = await db.execute(stmt)
+    token = result.scalars().first()
+
+    if token is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Token '{body.resource_id}'@'{body.idwf}' not found",
+        )
+
+    token.status = "validating"  # type: ignore[assignment]
+    await db.commit()
+
+    return {
+        "resourceId": body.resource_id,
+        "idwf": body.idwf,
+        "status": "validating",
+    }

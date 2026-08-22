@@ -20,7 +20,7 @@ import logging
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 from sqlalchemy.sql.expression import BinaryExpression
@@ -506,7 +506,10 @@ async def unlock_task(
             Token.resource_id == body.resource_id,
             Token.idwf == body.idwf,
             Token.case_id == body.case_id,
-            Token.locked_by == user.idu,
+            or_(
+                Token.locked_by == user.idu,
+                Token.locked_by.is_(None),
+            ),
             _assign_contains(user.idu),
         )
     )

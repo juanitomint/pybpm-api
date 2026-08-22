@@ -344,6 +344,7 @@ async def dashboard_tasks(
     total_stmt: Select = (  # type: ignore[assignment]
         select(func.count())
         .select_from(Token)
+        .join(User, Token.locked_by == User.idu, isouter=True)
         .where(and_(*conditions))  # type: ignore[arg-type]
     )
     total_result = await db.execute(total_stmt)
@@ -365,6 +366,7 @@ async def dashboard_tasks(
             _model_name_expr(),  # type: ignore[arg-type]
         )
         .select_from(Token)
+        .join(User, Token.locked_by == User.idu, isouter=True)
         .where(and_(*conditions))
     )  # type: ignore[arg-type]
 

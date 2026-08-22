@@ -10,7 +10,7 @@ Endpoints:
 - GET  /cases              — paginated list with optional status filter
 - GET  /tasks/count        — token counts grouped by status (pending/waiting/finished)
 - GET  /tasks              — paginated list of pending task tokens assigned to user
-- PATCH /tasks/{resource_id}/{id_wf}/status — transition a task to a new lifecycle status (stub)
+    - PATCH /tasks/done — complete a manual task (set status=finished, call movenext)
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ import datetime as dt
 import logging
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
@@ -38,6 +38,8 @@ from app.schemas.dashboard import (
     TaskListItem,
     TasksPendingResponse,
 )
+from app.schemas.engine import TaskCompleteResponse
+from app.services.engine_service import get_engine_service
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +135,10 @@ def _task_status_conditions(user_id: int, status_filter: str | None = None) -> l
     assign_cond = _assign_contains(user_id)
     conditions: list = [assign_cond]
 
-    if status_filter is None or status_filter == "pending" or status_filter == "user":
+    if status_filter is None or status_filter == "all":
+        # Default: return all active tasks (pending, in_progress, validating) — exclude done/finished
+        conditions.append(Token.status.notin_(["finished", "done"]))  # type: ignore[arg-type]
+    elif status_filter == "pending" or status_filter == "user":
         # Unlocked tokens with status='user' — the pending column
         conditions.append(Token.status == "user")
         conditions.append(Token.locked_by.is_(None))
@@ -319,8 +324,9 @@ async def dashboard_tasks(
         default=None,
         alias="status",
         description=(
-            "Filter by lifecycle status. Defaults to 'pending' (unlocked tasks with status='user')."
-            " Valid values: pending, in_progress, validating, done."
+            "Filter by lifecycle status. Defaults to all active tasks (pending + in_progress + validating)."
+            " Pass ``?status=pending``, ``?status=in_progress``, ``?status=validating``,"
+            " or ``?status=done`` to narrow the list."
         ),
     ),
     page: int = Query(default=1, ge=1),
@@ -328,13 +334,10 @@ async def dashboard_tasks(
 ):
     """Paginated task list for dashboard columns.
 
-    When ``status_filter`` is omitted the endpoint returns unlocked tokens with
-    status='user' (the **pending** column). Pass ``?status=in_progress``,
-    ``?status=validating``, or ``?status=done`` to load the other columns — each
-    uses its own WHERE clause and ordering.
-
-    The response includes ``locked`` (bool) and ``locked_by_nick`` (str | None),
-     resolved via a LEFT JOIN on User when Token.locked_by is not NULL.
+    Default (no filter) returns all active tasks — pending, in_progress, and validating —
+    assigned to the current user. Done/finished tasks are excluded by default; pass
+    ``?status=done`` to see them. The response includes ``locked`` (bool), ``locked_by``
+    (int | None), and ``locked_by_nick`` (str | None) resolved via LEFT JOIN on User.
     """
     conditions = _task_status_conditions(user.idu, status_filter)
 
@@ -358,19 +361,12 @@ async def dashboard_tasks(
             Token.case_id,
             Token.idwf,
             Token.locked_by,  # type: ignore[arg-type]
+            User.nick.label("nick"),  # type: ignore[arg-type]
             _model_name_expr(),  # type: ignore[arg-type]
         )
         .select_from(Token)
-        .outerjoin(
-            BpmModel,
-            BpmModel.idwf == Token.idwf,  # type: ignore[arg-type]
-        )
-        .outerjoin(
-            User,
-            User.idu == Token.locked_by,  # type: ignore[arg-type]
-        )
-        .where(and_(*conditions))  # type: ignore[arg-type]
-    )
+        .where(and_(*conditions))
+    )  # type: ignore[arg-type]
 
     # Ordering differs per column: recent activity first for live tasks; oldest
     # finished task first for done (so the UI can show "last 5").
@@ -420,50 +416,40 @@ async def dashboard_tasks(
     )
 
 
-class TaskStatusTransition(BaseModel):
+class TaskDoneRequest(BaseModel):
     resource_id: str
     idwf: str
-    target_status: str
+    case_id: str = Field(
+        ...,
+        description="Required — parallel branches share (resource_id, idwf); this narrows to one running case",
+    )
 
 
-@router.patch("/tasks/status", status_code=status.HTTP_200_OK)
-async def transition_task(
-    body: TaskStatusTransition = Body(...),
+@router.patch("/tasks/done", response_model=TaskCompleteResponse)
+async def task_done(
+    body: TaskDoneRequest = Body(...),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(_get_db),
 ):
-    """Stub: transition a task token to a new lifecycle status.
+    """Complete a manual task — mark token finished and advance via movenext.
 
-    Valid transitions (BPMN-like):
-        pending  -> in_progress -> validating -> done  (terminal)
-
-    Backends should persist the state change and emit an event; this stub
-    returns 501 until wired up.
+    Ported from legacy ``Engine::manual_task()`` behavior, but scoped to the dashboard
+    UI surface. Sets status=finished on the matched token, then calls EngineService.movenext()
+    which also creates pending tokens on all outgoing sequence-flow shapes (skipping ignored
+    stencils like TextAnnotation).
     """
-    allowed = {"pending", "in_progress", "validating", "done"}
-    if body.target_status not in allowed:
-        raise HTTPException(
-            status_code=400, detail=f"invalid status: {body.target_status}"
-        )
-
-    stmt = select(Token).where(
-        and_(Token.resource_id == body.resource_id, Token.idwf == body.idwf)
-    )
-    result = await db.execute(stmt)  # type: ignore[name-defined] — FastAPI dep wiring
-    token = result.scalar_one_or_none()
+    service = get_engine_service(db)
+    token = await service.get_token(body.idwf, body.case_id, body.resource_id)
 
     if token is None:
         raise HTTPException(
-            detail=f"Token '{body.resource_id}'@'{body.idwf}' not found",
+            status_code=404,
+            detail=f"Token '{body.resource_id}'@'{body.idwf}' not found in case '{body.case_id}'",
         )
 
-    # TODO(juan): wire real token transition here — persist state change and emit event.
-    return {
-        "resourceId": body.resource_id,
-        "idwf": body.idwf,
-        "previous_status": token.status,
-        "target_status": body.target_status,
-    }
+    await service.movenext(body.resource_id, body.idwf, body.case_id)
+    await db.commit()
+    return TaskCompleteResponse(ok=True, msg="Task completed successfully")
 
 
 class TaskLockRequest(BaseModel):

@@ -18,16 +18,28 @@ class Token(Base):
 
     __tablename__ = "tokens"
 
-    # Composite PK — (resource_id, id_wf) uniquely identifies a token within a case.
-    resource_id: Mapped[str] = mapped_column(
-        String(1024), nullable=False, primary_key=True
+    # DB primary key: auto-incrementing integer idtoken.
+    idtoken: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        server_default=sa.text("nextval('tokens_idtoken_seq')"),
     )
+
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "case_id", "resource_id", "idwf", name="uq_tokens_case_resource_idwf"
+        ),
+    )
+
+    # Business-unique identity: a shape within a workflow is identified by
+    # (resource_id, idwf). This constraint prevents duplicate tokens for the
+    # same shape in the same workflow.
+    resource_id: Mapped[str] = mapped_column(String(1024), nullable=False, index=True)
     idwf: Mapped[str] = mapped_column(
         String(255),
         ForeignKey("models.idwf", ondelete="CASCADE"),
         index=True,
         nullable=False,
-        primary_key=True,
     )
     case_id: Mapped[str] = mapped_column(
         String(32),

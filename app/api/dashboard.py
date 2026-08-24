@@ -362,7 +362,8 @@ async def dashboard_tasks(
             Token.check_date,
             Token.case_id,
             Token.idwf,
-            Token.locked_by,  # type: ignore[arg-type]
+            Token.tasktype,  # type: ignore[attr-defined]
+            Token.locked_by,  # type: ignore[attr-defined]
             User.nick.label("nick"),  # type: ignore[arg-type]
             _model_name_expr(),  # type: ignore[arg-type]
         )
@@ -405,6 +406,7 @@ async def dashboard_tasks(
                 time_elapsed=_format_time(row.check_date),  # type: ignore[arg-type]
                 locked_by=locked_by_id,  # raw Token.locked_by FK value for UI filtering
                 locked=bool(locked_by_id is not None),
+                tasktype=row.tasktype,  # type: ignore[attr-defined]
                 locked_by_nick=nick,
             )
         )

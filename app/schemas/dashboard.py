@@ -72,6 +72,7 @@ class TaskListItem(BaseModel):
     case_id: str = Field(alias="case_id")
     locked_by: int | None = None  # raw Token.locked_by FK value
     locked: bool = False  # True if Token.locked_by is not NULL
+    tasktype: str | None = None  # BPMN task type (User/Manual/Script/Send/Receive/Default)
     locked_by_nick: str | None = None  # User.nick of the locker (NULL when unlocked)
 
 

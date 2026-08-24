@@ -474,7 +474,10 @@ async def thumbnail(
 
 
 @router.get("/svg/{idwf}")
-async def svg(idwf: str):
+async def svg(
+    idwf: str,
+    user: User = Depends(get_current_user),
+):
     """Return XHTML document (plain text/html response).
 
     Matches legacy CodeIgniter Repository::svg(): decodes idwf, loads the model's

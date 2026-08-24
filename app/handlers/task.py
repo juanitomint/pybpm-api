@@ -168,10 +168,22 @@ class TaskHandler:
                 )
 
         tasktype = props.get("tasktype") or "Default"
+        # Persist tasktype on the token for downstream queries (inbox, dashboard).
+        from app.models.token import Token as TokenModel
+
+        await service.db.execute(  # type: ignore[misc]
+            sa.update(TokenModel)
+            .where(
+                TokenModel.idwf == idwf,
+                TokenModel.case_id == case_id,
+                TokenModel.resource_id == resource_id,
+            )
+            .values(tasktype=tasktype)
+        )
+
         # --- Branch on tasktype (PHP L140-341) ------------------------------ #
         if tasktype in ("User", "Manual"):
             from app.models.case import BpmCase as CaseModel
-            from app.models.token import Token as TokenModel
 
             # --- Auto-assign when no explicit resources defined (legacy Bpm::assign() fallback) -- #
             # Legacy checks $shape->properties->resources->items; if absent, auto-assign to case initiator.

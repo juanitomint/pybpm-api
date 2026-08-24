@@ -79,7 +79,7 @@ class TokenResponse(BaseModel):
     check_date: datetime | None = Field(default=None)
     run_count: int = 0
     locked_by: int | None = Field(default=None)
-    created_at: datetime = Field(alias="createdAt")
+    tasktype: str | None = Field(default=None)
     updated_at: datetime = Field(alias="updatedAt")
 
 

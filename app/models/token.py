@@ -71,7 +71,9 @@ class Token(Base):
     check_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     run_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     locked_by: Mapped[int | None] = mapped_column(Integer)
-    locked_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    tasktype: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, default=None
+    )  # BPMN task type (User/Manual/Script/Send/Receive/Default)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

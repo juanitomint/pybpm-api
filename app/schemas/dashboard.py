@@ -17,6 +17,7 @@ class CaseCountResponse(BaseModel):
 
     open: int = 0
     closed: int = 0
+    total: int = 0
 
 
 class CaseListItem(BaseModel):
@@ -50,7 +51,9 @@ class TaskCountResponse(BaseModel):
     """GET /dashboard/tasks/count — counts grouped by lifecycle status for current user."""
 
     pending: int = 0
+    in_progress: int = 0
     validating: int = 0
+    total: int = 0
 
 
 class TaskListItem(BaseModel):

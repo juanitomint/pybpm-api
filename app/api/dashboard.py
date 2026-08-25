@@ -190,9 +190,12 @@ async def case_counts(
         .where(cond & (BpmCase.status == "closed"))
     )
 
+    open_val = int(open_result.scalar() or 0)
+    closed_val = int(closed_result.scalar() or 0)
     return CaseCountResponse(
-        open=int(open_result.scalar() or 0),
-        closed=int(closed_result.scalar() or 0),
+        open=open_val,
+        closed=closed_val,
+        total=open_val + closed_val,
     )
 
 
@@ -283,8 +286,10 @@ async def task_counts(
 ):
     """Return token counts grouped by lifecycle status for current user.
 
-    ``pending``  — unlocked tokens with status='user' assigned to the user
-    ``validating`— tokens with status='validating' assigned to the user
+    ``pending``          — unlocked tokens with status='user' assigned to the user
+    ``in_progress`` — locked tokens with status='user' assigned to the user
+    ``validating``       — tokens with status='validating' assigned to the user
+    ``total``            — sum of all three counts above
     """
     pending_stmt = (
         select(func.count())
@@ -297,6 +302,17 @@ async def task_counts(
             )
         )
     )
+    in_progress_stmt = (
+        select(func.count())
+        .select_from(Token)
+        .where(
+            and_(  # type: ignore[arg-type]
+                Token.status == "user",
+                Token.locked_by.isnot(None),
+                _assign_contains(user.idu),
+            )
+        )
+    )
     validating_stmt = (
         select(func.count())
         .select_from(Token)
@@ -304,11 +320,18 @@ async def task_counts(
     )
 
     pending_result = await db.execute(pending_stmt)
+    in_progress_result = await db.execute(in_progress_stmt)
     validating_result = await db.execute(validating_stmt)
 
+    pending = int(pending_result.scalar() or 0)
+    in_progress = int(in_progress_result.scalar() or 0)
+    validating = int(validating_result.scalar() or 0)
+
     return TaskCountResponse(
-        pending=int(pending_result.scalar() or 0),
-        validating=int(validating_result.scalar() or 0),
+        pending=pending,
+        in_progress=in_progress,
+        validating=validating,
+        total=pending + in_progress + validating,
     )
 
 
@@ -344,8 +367,7 @@ async def dashboard_tasks(
     total_stmt: Select = (  # type: ignore[assignment]
         select(func.count())
         .select_from(Token)
-        .join(BpmModel, Token.idwf == BpmModel.idwf)
-        .join(User, Token.locked_by == User.idu, isouter=True)
+        .outerjoin(BpmModel, Token.idwf == BpmModel.idwf)
         .where(and_(*conditions))  # type: ignore[arg-type]
     )
     total_result = await db.execute(total_stmt)
@@ -368,8 +390,7 @@ async def dashboard_tasks(
             _model_name_expr(),  # type: ignore[arg-type]
         )
         .select_from(Token)
-        .join(BpmModel, Token.idwf == BpmModel.idwf)
-        .join(User, Token.locked_by == User.idu, isouter=True)
+        .outerjoin(BpmModel, Token.idwf == BpmModel.idwf)
         .where(and_(*conditions))
     )  # type: ignore[arg-type]
 
@@ -470,7 +491,7 @@ async def lock_task(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(_get_db),
 ):
-    """Lock a task token — set ``locked_by`` to the current user."""
+    """Lock a task token — set ``status='user'`` and ``locked_by`` to the current user."""
     stmt = select(Token).where(
         and_(
             Token.resource_id == body.resource_id,
@@ -487,10 +508,11 @@ async def lock_task(
             detail=f"Token '{body.resource_id}'@'{body.idwf}' not found",
         )
 
+    token.status = "user"
     token.locked_by = user.idu  # type: ignore[assignment]
     await db.commit()
 
-    return {"resourceId": body.resource_id, "idwf": body.idwf, "locked_by": user.idu}
+    return {"resourceId": body.resource_id, "idwf": body.idwf, "status": "user", "locked_by": user.idu}
 
 
 @router.patch("/tasks/unlock", status_code=status.HTTP_200_OK)
@@ -499,7 +521,7 @@ async def unlock_task(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(_get_db),
 ):
-    """Unlock a task token — clear ``locked_by`` if the current user holds it.
+    """Unlock a task token — set ``status='user'`` and clear ``locked_by`` if the current user holds it.
 
     Requires Token.locked_by == caller's idu AND caller in token.assign list.
     """
@@ -524,10 +546,11 @@ async def unlock_task(
             detail=f"Token '{body.resource_id}'@'{body.idwf}' not found",
         )
 
+    token.status = "user"
     token.locked_by = None  # type: ignore[assignment]
     await db.commit()
 
-    return {"resourceId": body.resource_id, "idwf": body.idwf, "locked_by": None}
+    return {"resourceId": body.resource_id, "idwf": body.idwf, "status": "user", "locked_by": None}
 
 
 @router.patch("/tasks/validate", status_code=status.HTTP_200_OK)

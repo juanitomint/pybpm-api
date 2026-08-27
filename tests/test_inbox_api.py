@@ -16,7 +16,9 @@ async def client(test_client):
 @pytest.fixture
 async def auth_headers(client):
     """Get authentication headers by logging in as admin."""
-    response = await client.post("/api/v1/auth/token", data={"username": "admin", "password": "admin"})
+    response = await client.post(
+        "/api/v1/auth/token", data={"username": "admin", "password": "admin"}
+    )
     assert response.status_code == 200, f"Auth failed: {response.text}"
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
@@ -41,7 +43,9 @@ async def test_get_inbox_counts(client, auth_headers):
 @pytest.mark.asyncio
 async def test_filter_with_key_value_dict(client, auth_headers):
     """POST /inbox/filter/ accepts key-value dict and filters messages."""
-    response = await client.post("/inbox/filter/", headers=auth_headers, json={"folder": "inbox"})
+    response = await client.post(
+        "/inbox/filter/", headers=auth_headers, json={"folder": "inbox"}
+    )
     assert response.status_code == 200
     data = response.json()
     assert "messages" in data

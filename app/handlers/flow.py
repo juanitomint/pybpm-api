@@ -29,7 +29,7 @@ def _safe_eval(expression: str, context: dict[str, Any] | None = None) -> bool:
         local_ns = dict(context) if context else {}
         result = eval(code, {"__builtins__": {}}, local_ns)
         return bool(result)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return False
 
 
@@ -47,7 +47,7 @@ def _eval_script(expression: str, context: dict[str, Any] | None = None) -> Any:
         code = compile(tree, "<script>", "eval")
         local_ns = dict(context) if context else {}
         return eval(code, {"__builtins__": {}}, local_ns)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
 
 

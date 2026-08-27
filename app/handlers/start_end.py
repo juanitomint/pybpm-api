@@ -278,7 +278,7 @@ class _SignalThrowingEndHandler:
                     case_id=case_id,
                     data={},  # signals can carry payload; v1 leaves it empty
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning(
                     "SignalThrowingEndHandler: failed to throw signal %s: %s",
                     signal_name,

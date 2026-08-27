@@ -22,7 +22,7 @@ test: ## Run all tests
 
 .PHONY: lint
 lint: ## Show code lints using ruff
-	uv run --with ruff ruff check . --select E,F,W,C90,N,B,SIM,RUF,UP,I --ignore B008,C901
+	uv run --with ruff -- ruff check .
 
 .PHONY: fix
 fix: ## Fix code lints using ruff

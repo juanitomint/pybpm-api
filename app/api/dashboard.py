@@ -89,7 +89,7 @@ def _assign_contains(user_id: int) -> BinaryExpression:
 
     On PostgreSQL uses CAST(assign AS JSONB) @> '[N]'::jsonb for proper array containment;
     and plain LIKE matching via .contains() on SQLite (tests)."""
-    from app.models.token import Token  # noqa: WPS433
+    from app.models.token import Token
 
     # Detect dialect at runtime via async_session_factory.kw['bind'] (SA 2.x async mode).
     from extensions import async_session_factory
@@ -400,7 +400,8 @@ async def dashboard_tasks(
         stmt = stmt.order_by(Token.created_at.asc())  # type: ignore[union-attr]
     else:
         stmt = stmt.order_by(  # type: ignore[assignment]
-            Token.check_date.desc(), Token.resource_id.asc()  # type: ignore[arg-type]
+            Token.check_date.desc(),
+            Token.resource_id.asc(),  # type: ignore[arg-type]
         )
     stmt = stmt.offset(offset).limit(per_page)  # type: ignore[union-attr]
 
@@ -512,7 +513,12 @@ async def lock_task(
     token.locked_by = user.idu  # type: ignore[assignment]
     await db.commit()
 
-    return {"resourceId": body.resource_id, "idwf": body.idwf, "status": "user", "locked_by": user.idu}
+    return {
+        "resourceId": body.resource_id,
+        "idwf": body.idwf,
+        "status": "user",
+        "locked_by": user.idu,
+    }
 
 
 @router.patch("/tasks/unlock", status_code=status.HTTP_200_OK)
@@ -550,7 +556,12 @@ async def unlock_task(
     token.locked_by = None  # type: ignore[assignment]
     await db.commit()
 
-    return {"resourceId": body.resource_id, "idwf": body.idwf, "status": "user", "locked_by": None}
+    return {
+        "resourceId": body.resource_id,
+        "idwf": body.idwf,
+        "status": "user",
+        "locked_by": None,
+    }
 
 
 @router.patch("/tasks/validate", status_code=status.HTTP_200_OK)

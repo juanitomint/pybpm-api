@@ -19,8 +19,6 @@ from __future__ import annotations
 
 import logging
 
-logger = logging.getLogger(__name__)
-
 # import uuid
 import random
 
@@ -50,6 +48,7 @@ from app.schemas.engine import (
 )
 from app.services.engine_service import EngineService, get_engine_service
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/bpm/engine", tags=["engine"])
 
 
@@ -283,7 +282,7 @@ async def start(
                     body=documentation
                     or f"Case {body.idcase} started for model {body.idwf}",
                 )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("Engine start: failed to create inbox message: %s", exc)
 
 

@@ -41,14 +41,15 @@ async def test_lock_task_success(client, auth_headers, seed_token):
     response = await client.patch(
         "/dashboard/tasks/lock", json=LOCK_PAYLOAD, headers=auth_headers
     )
-    assert (
-        response.status_code == 200
-    ), f"Expected 200, got {response.status_code}: {response.text}"
+    assert response.status_code == 200, (
+        f"Expected 200, got {response.status_code}: {response.text}"
+    )
     data = response.json()
     assert data["resourceId"] == "r1"
     assert data["idwf"] == "w1"
     assert data["locked_by"] is not None
     assert data["status"] == "user"
+
 
 @pytest.mark.asyncio
 async def test_unlock_task_success(client, auth_headers, seed_token):
@@ -65,9 +66,9 @@ async def test_unlock_task_success(client, auth_headers, seed_token):
     response = await client.patch(
         "/dashboard/tasks/unlock", json=UNLOCK_PAYLOAD, headers=auth_headers
     )
-    assert (
-        response.status_code == 200
-    ), f"Expected 200, got {response.status_code}: {response.text}"
+    assert response.status_code == 200, (
+        f"Expected 200, got {response.status_code}: {response.text}"
+    )
     data = response.json()
     assert data["resourceId"] == "r1"
     assert data["idwf"] == "w1"

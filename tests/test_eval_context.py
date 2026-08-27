@@ -105,6 +105,7 @@ class TestBuildScriptNamespace:
         ns = build_script_namespace(_make_token(), {}, {"amount": 5, "source": "api"})
         assert ns["amount"] == 5
         assert ns["source"] == "api"
+
     def test_reserved_key_shadowing_drops_transport_value(self):
         """Transport data sharing a reserved name cannot override the identifier."""
         ns = build_script_namespace(

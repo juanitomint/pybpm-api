@@ -81,8 +81,10 @@ async def save(
     """
     try:
         model_data = json.loads(data) if isinstance(data, str) else data
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail="Invalid JSON in 'data' field")
+    except (ValueError, TypeError) as err:
+        raise HTTPException(
+            status_code=400, detail="Invalid JSON in 'data' field"
+        ) from err
 
     # idwf comes strictly from data.resourceId — title is editor metadata, ignored for storage.
     idwf = model_data.get("resourceId") if isinstance(model_data, dict) else None
@@ -147,8 +149,10 @@ async def save_as(
     """
     try:
         model_data = json.loads(data) if isinstance(data, str) else data
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail="Invalid JSON in 'data' field")
+    except (ValueError, TypeError) as err:
+        raise HTTPException(
+            status_code=400, detail="Invalid JSON in 'data' field"
+        ) from err
 
     idwf = (
         title or model_data.get("resourceId") if isinstance(model_data, dict) else None

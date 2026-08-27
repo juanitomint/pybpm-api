@@ -38,6 +38,7 @@ class Config:
     LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
     CREATE_START_MSG = as_bool(os.environ.get("CREATE_START_MSG", "false"))
 
+
 class DevelopmentConfig(Config):
     DEBUG = True
     SQLALCHEMY_ECHO = False

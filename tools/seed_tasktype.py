@@ -11,7 +11,6 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import sys
 
 import sqlalchemy as sa
 from sqlalchemy import select
@@ -20,7 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from extensions import async_session_factory
 
 
-def _extract_tasktypes(data: dict, result: dict[str, str] | None = None) -> dict[str, str]:
+def _extract_tasktypes(
+    data: dict, result: dict[str, str] | None = None
+) -> dict[str, str]:
     """Recursively walk childShapes and collect resourceId -> tasktype."""
     if result is None:
         result = {}
@@ -70,19 +71,20 @@ async def seed(db: AsyncSession):
         print("[seed_tasktype] No task shapes found in any model.")
         return
 
-    print(f"[seed_tasktype] Found {len(tasktype_map)} unique task shapes across {len(models_with_tasks)} models")
+    print(
+        f"[seed_tasktype] Found {len(tasktype_map)} unique task shapes across {len(models_with_tasks)} models"
+    )
 
     # Update tokens that have a matching resourceId
     update_stmt = (
         sa.update(Token)
         .where(Token.resource_id.in_(tasktype_map.keys()))
-        .values(tasktype=sa.case(
-            *(
-                (Token.resource_id == rid, tt)
-                for rid, tt in tasktype_map.items()
-            ),
-            else_=None,
-        ))
+        .values(
+            tasktype=sa.case(
+                *((Token.resource_id == rid, tt) for rid, tt in tasktype_map.items()),
+                else_=None,
+            )
+        )
     )
     result = await db.execute(update_stmt)
     await db.commit()

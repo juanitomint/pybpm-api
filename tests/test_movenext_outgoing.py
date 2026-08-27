@@ -43,10 +43,12 @@ class TestMovenextAdvancesAllOutgoingShapes:
         }
 
         created = []
+
         async def capture_create(**kwargs):
             created.append(kwargs)
 
         call_seq = 0
+
         async def mock_get_token(idwf, case_id, resource_id):
             nonlocal call_seq
             call_seq += 1
@@ -55,10 +57,16 @@ class TestMovenextAdvancesAllOutgoingShapes:
             return None  # subsequent calls check existing tokens on outgoing shapes → none exist
 
         with (
-            patch.object(service, "get_token", new_callable=AsyncMock, side_effect=mock_get_token),
             patch.object(
-                service, "get_shape", new_callable=AsyncMock,
-                side_effect=lambda rid, _idwf: outgoing_shapes.get(rid, shape_with_three_outgoing),
+                service, "get_token", new_callable=AsyncMock, side_effect=mock_get_token
+            ),
+            patch.object(
+                service,
+                "get_shape",
+                new_callable=AsyncMock,
+                side_effect=lambda rid, _idwf: outgoing_shapes.get(
+                    rid, shape_with_three_outgoing
+                ),
             ),
             patch.object(service, "create_token", new=capture_create),
             patch.object(service, "mark_token_finished", new_callable=AsyncMock),
@@ -92,23 +100,38 @@ class TestMovenextAdvancesAllOutgoingShapes:
         outgoing_shapes = {
             "start": shape_with_ignored,
             "task-real": {"resourceId": "task-real", "stencil": {"id": "Task"}},
-            "text-note": {"resourceId": "text-note", "stencil": {"id": "TextAnnotation"}},
-            "assoc-link": {"resourceId": "assoc-link", "stencil": {"id": "Association_Undirected"}},
+            "text-note": {
+                "resourceId": "text-note",
+                "stencil": {"id": "TextAnnotation"},
+            },
+            "assoc-link": {
+                "resourceId": "assoc-link",
+                "stencil": {"id": "Association_Undirected"},
+            },
         }
 
         created = []
+
         async def capture_create(**kwargs):
             created.append(kwargs)
 
         call_seq = 0
+
         async def mock_get_token(_idwf, _case_id, resource_id):
             nonlocal call_seq
             call_seq += 1
             return fake_token if call_seq == 1 else None
 
         with (
-            patch.object(service, "get_token", new_callable=AsyncMock, side_effect=mock_get_token),
-            patch.object(service, "get_shape", new_callable=AsyncMock, side_effect=lambda rid, _i: outgoing_shapes.get(rid)),
+            patch.object(
+                service, "get_token", new_callable=AsyncMock, side_effect=mock_get_token
+            ),
+            patch.object(
+                service,
+                "get_shape",
+                new_callable=AsyncMock,
+                side_effect=lambda rid, _i: outgoing_shapes.get(rid),
+            ),
             patch.object(service, "create_token", new=capture_create),
             patch.object(service, "mark_token_finished", new_callable=AsyncMock),
         ):
@@ -132,24 +155,35 @@ class TestMovenextAdvancesAllOutgoingShapes:
         }
 
         created = []
+
         async def capture_create(**kwargs):
             created.append(kwargs)
 
         call_seq = 0
+
         async def mock_get_token(_idwf, _case_id, resource_id):
             nonlocal call_seq
             call_seq += 1
             return fake_source if call_seq == 1 else existing_outgoing
 
         with (
-            patch.object(service, "get_token", new_callable=AsyncMock, side_effect=mock_get_token),
-            patch.object(service, "get_shape", new_callable=AsyncMock, side_effect=lambda rid, _i: outgoing_shapes.get(rid)),
+            patch.object(
+                service, "get_token", new_callable=AsyncMock, side_effect=mock_get_token
+            ),
+            patch.object(
+                service,
+                "get_shape",
+                new_callable=AsyncMock,
+                side_effect=lambda rid, _i: outgoing_shapes.get(rid),
+            ),
             patch.object(service, "create_token", new=capture_create),
             patch.object(service, "mark_token_finished", new_callable=AsyncMock),
         ):
             await service.movenext("start", "m", "c")
 
-        assert len(created) == 0, f"Expected no new tokens when one already exists; got {created}"
+        assert len(created) == 0, (
+            f"Expected no new tokens when one already exists; got {created}"
+        )
 
     @pytest.mark.asyncio
     async def test_mixed_outgoing_types_all_get_tokens(self):
@@ -161,29 +195,45 @@ class TestMovenextAdvancesAllOutgoingShapes:
         fake_token = MagicMock(idwf="m", case_id="c", resource_id="gateway")
 
         outgoing_shapes = {
-            "gateway": {"resourceId": "gateway", "stencil": {"id": "ParallelGateway"}, "outgoing": [
-                {"resourceId": "task-1"},
-                {"resourceId": "end-a"},
-                {"resourceId": "flow-to-end"},
-            ]},
+            "gateway": {
+                "resourceId": "gateway",
+                "stencil": {"id": "ParallelGateway"},
+                "outgoing": [
+                    {"resourceId": "task-1"},
+                    {"resourceId": "end-a"},
+                    {"resourceId": "flow-to-end"},
+                ],
+            },
             "task-1": {"resourceId": "task-1", "stencil": {"id": "Task"}},
             "end-a": {"resourceId": "end-a", "stencil": {"id": "EndNoneEvent"}},
-            "flow-to-end": {"resourceId": "flow-to-end", "stencil": {"id": "SequenceFlow"}},
+            "flow-to-end": {
+                "resourceId": "flow-to-end",
+                "stencil": {"id": "SequenceFlow"},
+            },
         }
 
         created = []
+
         async def capture_create(**kwargs):
             created.append(kwargs)
 
         call_seq = 0
+
         async def mock_get_token(_idwf, _case_id, resource_id):
             nonlocal call_seq
             call_seq += 1
             return fake_token if call_seq == 1 else None
 
         with (
-            patch.object(service, "get_token", new_callable=AsyncMock, side_effect=mock_get_token),
-            patch.object(service, "get_shape", new_callable=AsyncMock, side_effect=lambda rid, _i: outgoing_shapes.get(rid)),
+            patch.object(
+                service, "get_token", new_callable=AsyncMock, side_effect=mock_get_token
+            ),
+            patch.object(
+                service,
+                "get_shape",
+                new_callable=AsyncMock,
+                side_effect=lambda rid, _i: outgoing_shapes.get(rid),
+            ),
             patch.object(service, "create_token", new=capture_create),
             patch.object(service, "mark_token_finished", new_callable=AsyncMock),
         ):
@@ -196,4 +246,3 @@ class TestMovenextAdvancesAllOutgoingShapes:
             "end-a": "EndNoneEvent",
             "flow-to-end": "SequenceFlow",
         }
-

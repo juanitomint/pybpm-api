@@ -28,14 +28,18 @@ dev = [
    "ruff>=0.5.0",                # Ultra-fast linter to enforce code quality
    "debugpy>=1.8.21",
    "httpie>=3.2.4",
+   "pytest-xdist>=3.8.0",
 ]
 
 [tool.ruff.lint]
-extend-ignore = [
+select = ["E", "F", "W", "C90", "N", "B", "SIM", "RUF", "UP", "I"]
+ignore = [
     # B008: Depends() in argument defaults is the standard FastAPI DI pattern.
     "B008",
     # C901: `_collect_shapes` and `_find_shape` are intentionally recursive BPMN walkers.
     "C901",
+    # E501: Line too long — BPMN data and legacy code references exceed 88 chars.
+    "E501",
 ]
 
 [tool.pytest.ini_options]

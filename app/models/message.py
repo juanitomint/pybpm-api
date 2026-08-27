@@ -29,7 +29,8 @@ class Message(Base):
         Integer, primary_key=True, autoincrement=True
     )
     to_idu: Mapped[int] = mapped_column(
-        ForeignKey("users.idu"), index=True  # recipient user ID
+        ForeignKey("users.idu"),
+        index=True,  # recipient user ID
     )
     from_idu: Mapped[int | None] = mapped_column(
         ForeignKey("users.idu")
@@ -39,7 +40,9 @@ class Message(Base):
     )
     body: Mapped[str | None] = mapped_column(sa.Text(), nullable=True)
     folder: Mapped[str] = mapped_column(
-        String(32), index=True, server_default="inbox"  # inbox | star | trash | outbox
+        String(32),
+        index=True,
+        server_default="inbox",  # inbox | star | trash | outbox
     )
     is_read: Mapped[bool] = mapped_column(default=False, server_default="false")
     is_starred: Mapped[bool] = mapped_column(default=False, server_default="false")

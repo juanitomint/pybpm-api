@@ -4,6 +4,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app import handlers  # triggers handler registration at import time  # noqa: F401
 from app.api.auth import router as auth_router
 from app.api.bpm.cases import router as cases_router
 from app.api.bpm.engine import router as engine_router
@@ -13,7 +14,6 @@ from app.api.bpm.tokens import router as token_manager_router
 from app.api.dashboard import router as dashboard_router
 from app.api.inbox import router as inbox_router
 from app.core.logging import build_uvicorn_log_config
-from app.handlers import *  # triggers handler registration at import time
 
 SVG_DIR = "static/svg"
 
@@ -88,20 +88,21 @@ def main():
     import uvicorn
 
     from app.core.scheduler import start_scheduler, stop_scheduler
-    
+
     log_config = build_uvicorn_log_config()
     logging.config.dictConfig(log_config)
-    
+
     # Read port from APP_PORT env var, default to 5000 (per AGENTS.md testing guidance).
     port = int(os.environ.get("APP_PORT", "5000"))
-    
+
     # Start background scheduler for event schedule dispatch.
     start_scheduler(app)
-    
+
     try:
         uvicorn.run(app, host="0.0.0.0", port=port, log_config=log_config)
     finally:
         stop_scheduler(app)
+
 
 if __name__ == "__main__":
     main()

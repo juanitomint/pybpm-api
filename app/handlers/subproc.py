@@ -136,7 +136,7 @@ class CollapsedSubprocessHandler:
                 try:
                     result = eval(cond_expr, {"__builtins__": {}}, context)
                     is_finished = bool(result)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     logger.debug(
                         "CollapsedSubprocessHandler: completion condition eval failed"
                     )

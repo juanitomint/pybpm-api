@@ -118,7 +118,9 @@ class TestParallelGatewayAdvancesWhenAllFinished:
 
         from app.handlers.gate import ParallelGatewayHandler
 
-        await ParallelGatewayHandler().handle(gateway_token, _make_parallel_shape(), mock_service)
+        await ParallelGatewayHandler().handle(
+            gateway_token, _make_parallel_shape(), mock_service
+        )
         assert mock_service.movenext.call_count == 1
 
 
@@ -137,7 +139,9 @@ class TestParallelGatewayWaitsForInbounds:
 
         from app.handlers.gate import ParallelGatewayHandler
 
-        await ParallelGatewayHandler().handle(gateway_token, _make_parallel_shape(), mock_service)
+        await ParallelGatewayHandler().handle(
+            gateway_token, _make_parallel_shape(), mock_service
+        )
         assert mock_service.movenext.call_count == 0
 
 
@@ -155,11 +159,23 @@ class TestExclusiveGatewayChoosesOneOutbound:
 
         async def fake_get_shape(rid, idwf):
             if rid == "flow-a":
-                return {"resourceId": "flow-a", "stencil": {"id": "SequenceFlow"},
-                        "properties": {"conditiontype": "Expression", "conditionexpression": "yes"}}
+                return {
+                    "resourceId": "flow-a",
+                    "stencil": {"id": "SequenceFlow"},
+                    "properties": {
+                        "conditiontype": "Expression",
+                        "conditionexpression": "yes",
+                    },
+                }
             if rid == "flow-b":
-                return {"resourceId": "flow-b", "stencil": {"id": "SequenceFlow"},
-                        "properties": {"conditiontype": "Expression", "conditionexpression": "no"}}
+                return {
+                    "resourceId": "flow-b",
+                    "stencil": {"id": "SequenceFlow"},
+                    "properties": {
+                        "conditiontype": "Expression",
+                        "conditionexpression": "no",
+                    },
+                }
             return None
 
         mock_service.get_shape.side_effect = fake_get_shape
@@ -167,7 +183,9 @@ class TestExclusiveGatewayChoosesOneOutbound:
 
         from app.handlers.gate import ExclusiveDatabasedGatewayHandler
 
-        await ExclusiveDatabasedGatewayHandler().handle(gateway_token, shape, mock_service)
+        await ExclusiveDatabasedGatewayHandler().handle(
+            gateway_token, shape, mock_service
+        )
         assert mock_service.movenext.call_count == 1
         assert mock_service.movenext.call_args[0][0] == "flow-a"
 
@@ -175,15 +193,24 @@ class TestExclusiveGatewayChoosesOneOutbound:
 class TestExclusiveGatewayRejectsMultipleMatches:
     @pytest.mark.asyncio
     async def test_multiple_matches_raises(self, mock_service, gateway_token):
-        shape = _make_exclusive_shape("match", [
-            {"resourceId": "flow-a", "conditionexpression": "match"},
-            {"resourceId": "flow-b", "conditionexpression": "match"},
-        ])
+        shape = _make_exclusive_shape(
+            "match",
+            [
+                {"resourceId": "flow-a", "conditionexpression": "match"},
+                {"resourceId": "flow-b", "conditionexpression": "match"},
+            ],
+        )
         _patch_case_data(mock_service, {"match": "match"})
 
         async def fake_get_shape(rid, idwf):
-            return {"resourceId": rid, "stencil": {"id": "SequenceFlow"},
-                    "properties": {"conditiontype": "Expression", "conditionexpression": "match"}}
+            return {
+                "resourceId": rid,
+                "stencil": {"id": "SequenceFlow"},
+                "properties": {
+                    "conditiontype": "Expression",
+                    "conditionexpression": "match",
+                },
+            }
 
         mock_service.get_shape.side_effect = fake_get_shape
         mock_service.get_previous.return_value = []
@@ -191,25 +218,45 @@ class TestExclusiveGatewayRejectsMultipleMatches:
         from app.handlers.gate import ExclusiveDatabasedGatewayHandler
 
         with pytest.raises(ValueError, match="produced 2 matches"):
-            await ExclusiveDatabasedGatewayHandler().handle(gateway_token, shape, mock_service)
+            await ExclusiveDatabasedGatewayHandler().handle(
+                gateway_token, shape, mock_service
+            )
 
 
 class TestExclusiveGatewayFallsBackToDefault:
     @pytest.mark.asyncio
     async def test_fallback_to_default_flow(self, mock_service, gateway_token):
-        shape = _make_exclusive_shape("x", [
-            {"resourceId": "flow-a", "conditionexpression": "nomatch"},
-            {"resourceId": "flow-b", "conditionexpression": ""},  # empty -> skipped in first loop
-        ])
+        shape = _make_exclusive_shape(
+            "x",
+            [
+                {"resourceId": "flow-a", "conditionexpression": "nomatch"},
+                {
+                    "resourceId": "flow-b",
+                    "conditionexpression": "",
+                },  # empty -> skipped in first loop
+            ],
+        )
         _patch_case_data(mock_service, {})
 
         async def fake_get_shape(rid, idwf):
             if rid == "flow-a":
-                return {"resourceId": "flow-a", "stencil": {"id": "SequenceFlow"},
-                        "properties": {"conditiontype": "Expression", "conditionexpression": "nomatch"}}
+                return {
+                    "resourceId": "flow-a",
+                    "stencil": {"id": "SequenceFlow"},
+                    "properties": {
+                        "conditiontype": "Expression",
+                        "conditionexpression": "nomatch",
+                    },
+                }
             if rid == "flow-b":
-                return {"resourceId": "flow-b", "stencil": {"id": "SequenceFlow"},
-                        "properties": {"conditiontype": "Default", "conditionexpression": ""}}
+                return {
+                    "resourceId": "flow-b",
+                    "stencil": {"id": "SequenceFlow"},
+                    "properties": {
+                        "conditiontype": "Default",
+                        "conditionexpression": "",
+                    },
+                }
             return None
 
         mock_service.get_shape.side_effect = fake_get_shape
@@ -217,7 +264,9 @@ class TestExclusiveGatewayFallsBackToDefault:
 
         from app.handlers.gate import ExclusiveDatabasedGatewayHandler
 
-        await ExclusiveDatabasedGatewayHandler().handle(gateway_token, shape, mock_service)
+        await ExclusiveDatabasedGatewayHandler().handle(
+            gateway_token, shape, mock_service
+        )
         assert mock_service.movenext.call_count == 1
         assert mock_service.movenext.call_args[0][0] == "flow-b"
 
@@ -229,7 +278,9 @@ class TestExclusiveGatewayNoAssignmentMovesNext:
 
         from app.handlers.gate import ExclusiveDatabasedGatewayHandler
 
-        await ExclusiveDatabasedGatewayHandler().handle(gateway_token, shape, mock_service)
+        await ExclusiveDatabasedGatewayHandler().handle(
+            gateway_token, shape, mock_service
+        )
         assert mock_service.movenext.call_count == 1
         assert mock_service.movenext.call_args[0][0] == "gw-shape-1"
 
@@ -246,15 +297,23 @@ class TestExclusiveGatewayOperatorParsingIntegration:
         _patch_case_data(mock_service, {"score": "9"})
 
         async def fake_get_shape(rid, idwf):
-            return {"resourceId": rid, "stencil": {"id": "SequenceFlow"},
-                    "properties": {"conditiontype": "Expression", "conditionexpression": ">5"}}
+            return {
+                "resourceId": rid,
+                "stencil": {"id": "SequenceFlow"},
+                "properties": {
+                    "conditiontype": "Expression",
+                    "conditionexpression": ">5",
+                },
+            }
 
         mock_service.get_shape.side_effect = fake_get_shape
         mock_service.get_previous.return_value = []
 
         from app.handlers.gate import ExclusiveDatabasedGatewayHandler
 
-        await ExclusiveDatabasedGatewayHandler().handle(gateway_token, shape, mock_service)
+        await ExclusiveDatabasedGatewayHandler().handle(
+            gateway_token, shape, mock_service
+        )
         assert mock_service.movenext.call_count == 1
 
 
@@ -263,7 +322,9 @@ class TestExclusiveGatewayOperatorParsingIntegration:
 
 class TestGenericGatewayAdvancesAllOutgoing:
     @pytest.mark.asyncio
-    async def test_generic_gateway_movenexts_all_outgoing(self, mock_service, gateway_token):
+    async def test_generic_gateway_movenexts_all_outgoing(
+        self, mock_service, gateway_token
+    ):
         from app.handlers.gate import GenericGatewayHandler
 
         shape = {

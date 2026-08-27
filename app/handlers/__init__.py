@@ -1,6 +1,6 @@
 """Shape handler packages — each package auto-registers its handlers via ENGINE_HANDLER_REGISTRY at import time."""
 
-from app.handlers.event import (  # noqa: F401
+from app.handlers.event import (
     IntermediateConditionalEventHandler,
     IntermediateErrorEventHandler,
     IntermediateLinkEventCatchingHandler,
@@ -8,12 +8,12 @@ from app.handlers.event import (  # noqa: F401
     IntermediateSignalEventCatchingHandler,
     IntermediateTimerEventHandler,
 )
-from app.handlers.flow import MessageFlowHandler, SequenceFlowHandler  # noqa: F401
-from app.handlers.gate import (  # noqa: F401
+from app.handlers.flow import MessageFlowHandler, SequenceFlowHandler
+from app.handlers.gate import (
     ExclusiveDatabasedGatewayHandler,
     ParallelGatewayHandler,
 )
-from app.handlers.start_end import (  # noqa: F401
+from app.handlers.start_end import (
     EndCancelEventHandler,
     EndErrorEventHandler,
     EndMessageEventHandler,
@@ -23,7 +23,30 @@ from app.handlers.start_end import (  # noqa: F401
     StartMessageEventHandler,
     StartNoneEventHandler,
     StartTimerEventHandler,
-    _SignalThrowingEndHandler,
 )
-from app.handlers.subproc import CollapsedSubprocessHandler  # noqa: F401
-from app.handlers.task import TaskHandler  # noqa: F401
+from app.handlers.subproc import CollapsedSubprocessHandler
+from app.handlers.task import TaskHandler
+
+__all__ = [
+    "CollapsedSubprocessHandler",
+    "EndCancelEventHandler",
+    "EndErrorEventHandler",
+    "EndMessageEventHandler",
+    "EndNoneEventHandler",
+    "EndTerminateEventHandler",
+    "ExclusiveDatabasedGatewayHandler",
+    "GenericStartEventHandler",
+    "IntermediateConditionalEventHandler",
+    "IntermediateErrorEventHandler",
+    "IntermediateLinkEventCatchingHandler",
+    "IntermediateMessageEventCatchingHandler",
+    "IntermediateSignalEventCatchingHandler",
+    "IntermediateTimerEventHandler",
+    "MessageFlowHandler",
+    "ParallelGatewayHandler",
+    "SequenceFlowHandler",
+    "StartMessageEventHandler",
+    "StartNoneEventHandler",
+    "StartTimerEventHandler",
+    "TaskHandler",
+]

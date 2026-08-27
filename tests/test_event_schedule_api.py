@@ -11,7 +11,7 @@ data. Those are tested via direct DB queries below.
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from httpx import AsyncClient
+from sqlalchemy import select as sa_select
 
 
 @pytest.fixture
@@ -29,11 +29,6 @@ def _now_iso() -> str:
 
 BASE = "/events/schedules"
 
-# Used by direct-DB round-trip tests.
-from extensions import get_async_db  # noqa: E402
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine  # noqa: E402
-from sqlalchemy import select as sa_select  # noqa: E402
-
 
 # -- CRUD tests --------------------------------------------------------------- #
 
@@ -41,13 +36,16 @@ from sqlalchemy import select as sa_select  # noqa: E402
 @pytest.mark.asyncio
 async def test_create_event_schedule(client):
     """POST /events/schedules returns 201 with schedule_id."""
-    resp = await client.post(BASE, json={
-        "case_id": "C000000001",
-        "idwf": "test-wf",
-        "resource_id": "timer-shape-01",
-        "trigger_time": _now_iso(),
-        "schedule_type": "timer",
-    })
+    resp = await client.post(
+        BASE,
+        json={
+            "case_id": "C000000001",
+            "idwf": "test-wf",
+            "resource_id": "timer-shape-01",
+            "trigger_time": _now_iso(),
+            "schedule_type": "timer",
+        },
+    )
     assert resp.status_code == 201, f"create failed: {resp.text}"
     data = resp.json()
     assert data["ok"] is True
@@ -64,9 +62,7 @@ async def test_read_event_schedule(client):
 @pytest.mark.asyncio
 async def test_list_event_schedules_empty(client):
     """GET /events/schedules with no matching rows returns empty list."""
-    resp = await client.get(
-        BASE, params={"case_id": "NONEXISTENT-CASE-ID"}
-    )
+    resp = await client.get(BASE, params={"case_id": "NONEXISTENT-CASE-ID"})
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 0
@@ -76,9 +72,7 @@ async def test_list_event_schedules_empty(client):
 @pytest.mark.asyncio
 async def test_update_nonexistent_returns_404(client):
     """PATCH on a non-existent ID returns 404."""
-    resp = await client.patch(
-        f"{BASE}/99999", json={"status": "fired"}
-    )
+    resp = await client.patch(f"{BASE}/99999", json={"status": "fired"})
     assert resp.status_code == 404
 
 
@@ -112,8 +106,8 @@ async def test_crud_round_trip_via_db():
     Verifies EventScheduleService and EngineService._create_timer_event_schedule()
     work correctly with real SQLAlchemy operations against the in-memory SQLite engine.
     """
-    from app.services.engine_service import EngineService
     from app.models.event_schedule import EventSchedule as ScheduleModel
+    from app.services.engine_service import EngineService
 
     # Obtain a session directly bound to the test DB (no per-request isolation).
     from tests.conftest import _state
@@ -133,9 +127,7 @@ async def test_crud_round_trip_via_db():
         assert isinstance(schedule_id, int)
 
         # -- READ --
-        stmt = sa_select(ScheduleModel).where(
-            ScheduleModel.idschedule == schedule_id
-        )
+        stmt = sa_select(ScheduleModel).where(ScheduleModel.idschedule == schedule_id)
         result = await db_session.execute(stmt)
         entry = result.scalar_one_or_none()
         assert entry is not None
@@ -145,15 +137,13 @@ async def test_crud_round_trip_via_db():
         assert entry.data_json["trigger"] == "2026-10-01T15:00:00+00:00"
 
         # -- UPDATE status (pending -> fired) --
-        stmt = (
-            sa_select(ScheduleModel)
-            .where(ScheduleModel.idschedule == schedule_id)
-        )
+        stmt = sa_select(ScheduleModel).where(ScheduleModel.idschedule == schedule_id)
         result = await db_session.execute(stmt)
         entry = result.scalar_one_or_none()
         assert entry is not None
 
         from sqlalchemy import update as sa_update
+
         upd_stmt = (
             sa_update(ScheduleModel)
             .where(ScheduleModel.idschedule == schedule_id)
@@ -167,8 +157,9 @@ async def test_crud_round_trip_via_db():
         assert updated_entry.status == "fired"
 
         # -- CANCEL (409 on fired entry — verified via status check, not HTTP) --
-        assert updated_entry.status != "pending", \
+        assert updated_entry.status != "pending", (
             "Should be 'fired' and thus not cancellable"
+        )
 
 
 # -- EngineService._set_token_status smoke test --------------------------------- #
@@ -177,8 +168,8 @@ async def test_crud_round_trip_via_db():
 @pytest.mark.asyncio
 async def test_set_token_status_updates_token():
     """EngineService._set_token_status updates token status + external_data."""
-    from app.services.engine_service import EngineService
     from app.models.token import Token
+    from app.services.engine_service import EngineService
     from tests.conftest import _state
 
     factory = _state._factory  # type: ignore[attr-defined]
@@ -187,16 +178,23 @@ async def test_set_token_status_updates_token():
 
         # Create a token first.
         token = Token(
-            idwf="token-wf", case_id="T-CASE", resource_id="t-shape",
-            type="Task", status="pending", run_count=0,
+            idwf="token-wf",
+            case_id="T-CASE",
+            resource_id="t-shape",
+            type="Task",
+            status="pending",
+            run_count=0,
         )
         db_session.add(token)
         await db_session.flush()
 
         # Update via _set_token_status.
         await service._set_token_status(
-            idwf="token-wf", case_id="T-CASE", resource_id="t-shape",
-            status_="waiting", data={"trigger": "2026-12-01T00:00:00+00:00"},
+            idwf="token-wf",
+            case_id="T-CASE",
+            resource_id="t-shape",
+            status_="waiting",
+            data={"trigger": "2026-12-01T00:00:00+00:00"},
         )
 
         # Verify.

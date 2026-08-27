@@ -61,10 +61,7 @@ async def run_intermediate_event_throwing(
         catcher_stencil = None
 
     # Determine trigger value.
-    if event_definition_ref:
-        trigger = event_definition_ref
-    else:
-        trigger = name or ""
+    trigger = event_definition_ref or (name or "")
 
     # Build search query: shapes with matching stencil ID and trigger/name match.
     catchers_by_trigger: list[dict] = []
@@ -362,9 +359,7 @@ def _parse_trigger_timestamp(trigger_str: str) -> datetime | None:
     # Try ISO format first.
     try:
         if "T" in trigger_str and "Z" in trigger_str:
-            return datetime.fromisoformat(
-                trigger_str.replace("Z", "+00:00")  # noqa: FURB162
-            )
+            return datetime.fromisoformat(trigger_str.replace("Z", "+00:00"))
         elif "T" in trigger_str:
             return datetime.fromisoformat(trigger_str)
     except (ValueError, TypeError):
@@ -372,7 +367,7 @@ def _parse_trigger_timestamp(trigger_str: str) -> datetime | None:
 
     # Try date-only format.
     try:
-        dt = datetime.strptime(trigger_str, "%Y-%m-%d")  # noqa: DTZ007
+        dt = datetime.strptime(trigger_str, "%Y-%m-%d")
         return dt.replace(tzinfo=UTC)
     except (ValueError, TypeError):
         pass
@@ -470,9 +465,7 @@ class IntermediateSignalEventCatchingHandler:
                     await service.movenext(resource_id, idwf, case_id)
 
                     return False
-            except (
-                Exception
-            ) as exc:  # noqa: BLE001 — log and continue even if signal check fails.
+            except Exception as exc:
                 logger.error(
                     "SignalCatchingHandler: error checking signals for '%s': %s",
                     signal_name,
@@ -488,7 +481,6 @@ class IntermediateSignalEventCatchingHandler:
             data={"signal_name": signal_name},
         )
         try:
-
             await service._create_signal_event_schedule(
                 case_id=case_id,
                 idwf=idwf,
@@ -496,9 +488,7 @@ class IntermediateSignalEventCatchingHandler:
                 signal_name=signal_name,
                 data_json={"name": signal_name},
             )
-        except (
-            Exception
-        ) as exc:  # noqa: BLE001 — log and continue even if schedule creation fails.
+        except Exception as exc:
             logger.warning(
                 "SignalCatchingHandler: failed to create signal schedule for '%s': %s",
                 signal_name,

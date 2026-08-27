@@ -70,7 +70,9 @@ async def gen_case(
     data_patch: dict[str, Any] = {}
     if parent_data is not None:
         data_patch["parent_data"] = parent_data
-    case_stmt = sa.update(BpmCase).where(BpmCase.idcase == candidate).values(**data_patch)  # type: ignore[arg-type]
+    case_stmt = (
+        sa.update(BpmCase).where(BpmCase.idcase == candidate).values(**data_patch)
+    )  # type: ignore[arg-type]
     db.add(child)
     await db.flush()
     if data_patch:

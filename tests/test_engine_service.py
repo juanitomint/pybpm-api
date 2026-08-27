@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -38,8 +37,8 @@ class TestEngineService:
         """Test creating a new token adds it to the database."""
         service = EngineService(mock_db)
 
-        with patch("app.services.engine_service.Token") as MockToken:
-            MockToken.return_value = MagicMock()
+        with patch("app.services.engine_service.Token") as mock_token:
+            mock_token.return_value = MagicMock()
 
             await service.create_token(
                 idwf="test-wf", case_id="case-123", resource_id="shape-1", type_="Task"
@@ -58,8 +57,6 @@ class TestEngineService:
         """
         service = EngineService(mock_db)
 
-        mock_token1 = MagicMock(idtoken=1)
-        mock_token2 = MagicMock(idtoken=2)
         mock_result = MagicMock()  # scalars()/all() are sync, not async
 
         async def mock_execute(stmt):

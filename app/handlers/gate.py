@@ -156,9 +156,9 @@ class ExclusiveDatabasedGatewayHandler:
             case_data = {}
 
         outgoing = shape.get("outgoing") or []
-        results: dict[str, tuple[dict, bool]] = (
-            {}
-        )  # rid -> (shape_info_dict, eval_bool)
+        results: dict[
+            str, tuple[dict, bool]
+        ] = {}  # rid -> (shape_info_dict, eval_bool)
         match_count = 0
 
         for out_ref in outgoing:
@@ -193,7 +193,7 @@ class ExclusiveDatabasedGatewayHandler:
 
             try:
                 eval_result = _safe_eval(eval_str, case_data)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 eval_result = False
 
             if eval_result:

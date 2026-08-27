@@ -14,17 +14,9 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # Import models so they register with _ModelBase.metadata before create_all runs.
-from app.models import (  # noqa: F401 — side-effect only; register tables
-    BpmCase,
-    BpmModel,
-    Group,
-    Message,
-    PermissionGroup,
-    PermissionRepository,
+from app.models import (
     Token,
-    TokenHistory,
     User,
-    UserGroup,
 )
 from app.models.base import Base as _ModelBase
 from extensions import get_async_db
@@ -45,6 +37,7 @@ async def setup_test_db():
 
     # Unique per-test SQLite file to avoid collisions when loops share addresses.
     db_path = f"sqlite+aiosqlite:///test_{uuid.uuid4().hex}.db"
+    db_file = Path(db_path.split("///")[1])
     engine = create_async_engine(db_path, echo=False)
     factory = async_sessionmaker(bind=engine, class_=AsyncSession)
 
@@ -55,15 +48,22 @@ async def setup_test_db():
     pw_hash = _bcrypt.hashpw(b"admin", _bcrypt.gensalt()).decode("utf-8")
     async with factory() as seed_session:
         admin = User(
-            nick="admin", pass_hash=pw_hash, name="Admin", lastname="User",
-            perm=["ADM"], idgroup=1, email="admin@localhost",
+            nick="admin",
+            pass_hash=pw_hash,
+            name="Admin",
+            lastname="User",
+            perm=["ADM"],
+            idgroup=1,
+            email="admin@localhost",
         )
         seed_session.add(admin)
         await seed_session.commit()
 
     yield {"engine": engine, "factory": factory}
 
-    await engine.dispose()
+    # Clean up test database file
+    if db_file.exists():
+        db_file.unlink()
 
 
 @pytest.fixture
@@ -106,15 +106,18 @@ async def test_client(setup_test_db):
 
     # Also patch dashboard's _get_db which uses its own import.
     from app.api.dashboard import _get_db as _dashboard_get_db
+
     app.dependency_overrides[_dashboard_get_db] = override_dashboard_get_db
 
     # Patch at module level so inbox.py's direct calls use test engine.
     import extensions as _ext
+
     _ext.get_async_db = override_get_async_db
     # Also patch async_session_factory.kw['bind'] so _assign_contains (dashboard)
     # detects the SQLite test engine instead of production PostgreSQL.
     _ext.async_session_factory.kw["bind"] = db_info["engine"]
     import app.api.inbox as _inbox_mod
+
     _inbox_mod.get_async_db = override_get_async_db
 
     transport = ASGITransport(app=app)

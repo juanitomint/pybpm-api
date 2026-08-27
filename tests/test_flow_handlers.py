@@ -6,8 +6,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.handlers.flow import MessageFlowHandler, SequenceFlowHandler
 
-@pytest.fixture
+
 def mock_service():
     """Create a mock EngineService with async methods."""
     service = MagicMock()
@@ -146,13 +147,9 @@ class TestMessageFlowHandler:
         mock_service.get_shape.return_value = other_shape
 
         handler = MessageFlowHandler()
-        result = await handler.handle(mock_token, message_flow_shape, mock_service)
+        await handler.handle(mock_token, message_flow_shape, mock_service)
 
         # Should only call movenext on itself, not the Task
         assert mock_service.movenext.call_count == 1
         calls = mock_service.movenext.call_args_list
         assert calls[0].args == ("shape-resource-1", "test-model", "case-123")
-
-
-# Import handlers at module level for test classes
-from app.handlers.flow import MessageFlowHandler, SequenceFlowHandler  # noqa: E402, I001

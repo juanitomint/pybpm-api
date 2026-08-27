@@ -14,26 +14,27 @@ The API server must be running on port 5000 (default). Override with:
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import argparse
 import asyncio
 import datetime as dt
 import json
-import sys
-from pathlib import Path
-MAX_POST_ITERATIONS = 10
 
 import httpx
 from jose import jwt
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from app.models.bpm_model import BpmModel
+from app.models.token import Token, TokenHistory
+from config import Config
+from extensions import async_session_factory
 
-from config import Config  # noqa: E402
-from extensions import async_session_factory  # noqa: E402
-from app.models.bpm_model import BpmModel  # noqa: E402
-from app.models.token import Token, TokenHistory  # noqa: E402
-
+MAX_POST_ITERATIONS = 10
 
 DEFAULT_API_BASE = "http://localhost:5000"
 
@@ -80,7 +81,9 @@ async def ensure_model_in_db(idwf: str) -> bool:
         existing = result.scalar_one_or_none()
 
     if existing is not None:
-        print(f"[model] already present in DB (idwf={idwf}, version={existing.version})")
+        print(
+            f"[model] already present in DB (idwf={idwf}, version={existing.version})"
+        )
         return False
 
     candidates = [Path("files/images/model", f"{idwf}.json"), Path(idwf + ".json")]
@@ -97,10 +100,14 @@ async def ensure_model_in_db(idwf: str) -> bool:
         sys.exit(1)
 
     if "resourceId" not in data and "stencil" not in data:
-        print(f"[model] WARNING: file doesn't look like a BPMN diagram; importing anyway")
+        print(
+            "[model] WARNING: file doesn't look like a BPMN diagram; importing anyway"
+        )
 
     async with async_session_factory() as session:
-        model = BpmModel(idwf=idwf, folder="General", version=0, data=data, created_by=1)
+        model = BpmModel(
+            idwf=idwf, folder="General", version=0, data=data, created_by=1
+        )
         session.add(model)
         await session.commit()
 
@@ -120,14 +127,20 @@ async def _fetch_tokens(session: AsyncSession, idwf: str, case_id: str) -> list[
     return list(result.scalars().all())
 
 
-async def _fetch_history(session: AsyncSession, idwf: str, case_id: str) -> list[TokenHistory]:
+async def _fetch_history(
+    session: AsyncSession, idwf: str, case_id: str
+) -> list[TokenHistory]:
     result = await session.execute(
-        select(TokenHistory).where(and_(TokenHistory.idwf == idwf, TokenHistory.case_id == case_id))
+        select(TokenHistory).where(
+            and_(TokenHistory.idwf == idwf, TokenHistory.case_id == case_id)
+        )
     )
     return list(result.scalars().all())
 
 
-async def _print_token_summary(tokens: list[Token], history: list[TokenHistory]) -> None:
+async def _print_token_summary(
+    tokens: list[Token], history: list[TokenHistory]
+) -> None:
     if not tokens:
         print("\n[inspect] No active tokens found\n")
         return
@@ -145,7 +158,9 @@ async def _print_token_summary(tokens: list[Token], history: list[TokenHistory])
         total = sum(counts.values())
         status_str = ", ".join(f"{s}={c}" for s, c in sorted(counts.items()))
         note = ""
-        if "finished" not in counts and any(k in counts for k in ["pending", "waiting", "user"]):
+        if "finished" not in counts and any(
+            k in counts for k in ["pending", "waiting", "user"]
+        ):
             note = "  ← NOT REACHED"
         print(f"{label:<25} {total:>5}    {status_str}{note}")
 
@@ -156,7 +171,9 @@ async def _print_token_summary(tokens: list[Token], history: list[TokenHistory])
         print("\n[history] No history records found.")
 
 
-async def run_engine_test(idwf: str, token: str, headers: dict[str, str], post_all: bool = False) -> int:
+async def run_engine_test(
+    idwf: str, token: str, headers: dict[str, str], post_all: bool = False
+) -> int:
     """Drive the full case lifecycle. Returns 0 on success, 1 on failure."""
     api_base = get_api_base()
 
@@ -164,21 +181,24 @@ async def run_engine_test(idwf: str, token: str, headers: dict[str, str], post_a
     print(f"\n[create] POST {api_base}/bpm/engine/newcase")
     async with httpx.AsyncClient() as client:
         resp = await client.post(
-            f"{api_base}/bpm/engine/newcase", json={"idwf": idwf}, headers=headers,
+            f"{api_base}/bpm/engine/newcase",
+            json={"idwf": idwf},
+            headers=headers,
         )
     if resp.status_code != 201:
         print(f"ERROR: newcase returned {resp.status_code}: {resp.text}")
         return 1
     idcase = str(resp.json()["idcase"])
     print(f"[info] Created case idcase={idcase}")
-    print(f"[create] OK\n")
+    print("[create] OK\n")
 
     # --- Start case --------------------------------------------------------- #
     print(f"[start] POST {api_base}/bpm/engine/start")
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"{api_base}/bpm/engine/start",
-            json={"idwf": idwf, "idcase": idcase}, headers=headers,
+            json={"idwf": idwf, "idcase": idcase},
+            headers=headers,
         )
     if resp.status_code != 200:
         print(f"ERROR: start returned {resp.status_code}: {resp.text}")
@@ -198,10 +218,13 @@ async def run_engine_test(idwf: str, token: str, headers: dict[str, str], post_a
     iteration = 0
     while True:
         iteration += 1
-        print(f"[run] Iteration {iteration}: POST {api_base}/bpm/engine/run/{idwf}/{idcase}")
+        print(
+            f"[run] Iteration {iteration}: POST {api_base}/bpm/engine/run/{idwf}/{idcase}"
+        )
         async with httpx.AsyncClient() as client:
             resp = await client.post(
-                f"{api_base}/bpm/engine/run/{idwf}/{idcase}", headers=headers,
+                f"{api_base}/bpm/engine/run/{idwf}/{idcase}",
+                headers=headers,
             )
         if resp.status_code != 200:
             print(f"ERROR: run returned {resp.status_code}: {resp.text}")
@@ -211,21 +234,32 @@ async def run_engine_test(idwf: str, token: str, headers: dict[str, str], post_a
         if post_all and iteration <= MAX_POST_ITERATIONS:
             async with async_session_factory() as session:
                 result = await session.execute(
-                    select(Token).where(and_(Token.idwf == idwf, Token.case_id == idcase, Token.status == "user"))
+                    select(Token).where(
+                        and_(
+                            Token.idwf == idwf,
+                            Token.case_id == idcase,
+                            Token.status == "user",
+                        )
+                    )
                 )
                 user_tokens = list(result.scalars().all())
             if user_tokens:
-                print(f"[task] Found {len(user_tokens)} user-task token(s), completing...")
+                print(
+                    f"[task] Found {len(user_tokens)} user-task token(s), completing..."
+                )
                 async with httpx.AsyncClient() as client:
                     for ut in user_tokens:
                         task_resp = await client.post(
                             f"{api_base}/bpm/engine/task/{idwf}/{idcase}/{ut.resource_id}",
-                            json={"data": {}, "action": "complete"}, headers=headers,
+                            json={"data": {}, "action": "complete"},
+                            headers=headers,
                         )
                         if task_resp.status_code == 200:
                             print(f"[task] {ut.resource_id}: completed")
                         else:
-                            print(f"[task] {ut.resource_id}: failed ({task_resp.status_code}) — {task_resp.text}")
+                            print(
+                                f"[task] {ut.resource_id}: failed ({task_resp.status_code}) — {task_resp.text}"
+                            )
                 continue
         break
 
@@ -234,7 +268,6 @@ async def run_engine_test(idwf: str, token: str, headers: dict[str, str], post_a
         tokens = await _fetch_tokens(session, idwf, idcase)
         history = await _fetch_history(session, idwf, idcase)
     return 0
-
 
 
 # --------------------------------------------------------------------------- #
@@ -249,7 +282,7 @@ async def _async_main(idwf: str, do_import: bool, post_all: bool) -> int:
     if do_import:
         await ensure_model_in_db(idwf)
     else:
-        print(f"[skip] Skipping import\n")
+        print("[skip] Skipping import\n")
     return await run_engine_test(idwf, _token_cache, _headers, post_all=post_all)
 
 
@@ -257,9 +290,19 @@ def main():
     parser = argparse.ArgumentParser(
         description="Exercise a BPMN model through the live engine."
     )
-    parser.add_argument("idwf", help="Workflow id (matches files/images/model/<idwf>.json)")
-    parser.add_argument("--import-models", action="store_true", help="Load model JSON from files/images/model/<idwf>.json into the DB before running.")
-    parser.add_argument("--post-all-tasks", action="store_true", help="Auto-complete user-task tokens until idle or 10 iterations.")
+    parser.add_argument(
+        "idwf", help="Workflow id (matches files/images/model/<idwf>.json)"
+    )
+    parser.add_argument(
+        "--import-models",
+        action="store_true",
+        help="Load model JSON from files/images/model/<idwf>.json into the DB before running.",
+    )
+    parser.add_argument(
+        "--post-all-tasks",
+        action="store_true",
+        help="Auto-complete user-task tokens until idle or 10 iterations.",
+    )
     args = parser.parse_args()
 
     if not Config.SECRET_KEY or "fallback" in Config.SECRET_KEY.lower():
@@ -269,9 +312,13 @@ def main():
     global _token_cache, _headers
     _token_cache = create_admin_token()
     _headers = {"Authorization": f"Bearer {_token_cache}"}
-    print(f"[auth] Admin JWT generated (idu=1, expires in {Config.JWT_EXPIRATION_HOURS}h)\n")
+    print(
+        f"[auth] Admin JWT generated (idu=1, expires in {Config.JWT_EXPIRATION_HOURS}h)\n"
+    )
 
-    exit_code = asyncio.run(_async_main(args.idwf, args.import_models, args.post_all_tasks))
+    exit_code = asyncio.run(
+        _async_main(args.idwf, args.import_models, args.post_all_tasks)
+    )
     sys.exit(exit_code)
 
 

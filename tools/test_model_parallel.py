@@ -20,7 +20,6 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncSession
 
 BASE = pathlib.Path(__file__).parent
 FIXTURES_DIR = BASE / "files" / "images" / "model"
@@ -34,16 +33,14 @@ async def load_one(path: pathlib.Path) -> tuple[str, bool | str]:
 
     try:
         payload = json.loads(path.read_text())
-    except Exception as exc:  # noqa: BLE001 — parse errors are not security-related
+    except Exception as exc:
         return path.stem, f"parse error: {exc}"
 
     idwf = payload.get("resourceId", path.stem.replace(" ", "_"))
 
     try:
         async with async_session_factory() as db:
-            existing = await db.execute(
-                select(BpmModel).where(BpmModel.idwf == idwf)
-            )
+            existing = await db.execute(select(BpmModel).where(BpmModel.idwf == idwf))
             if existing.scalar_one_or_none() is not None:
                 return idwf, True  # already there
 
@@ -60,7 +57,7 @@ async def load_one(path: pathlib.Path) -> tuple[str, bool | str]:
             await db.commit()
 
         return idwf, True
-    except SQLAlchemyError as exc:  # noqa: BLE001 — DB errors are not security-related
+    except SQLAlchemyError as exc:
         return idwf, f"DB error: {exc}"
 
 
@@ -78,7 +75,7 @@ async def main():
         try:
             json.loads(p.read_text())
             json_paths.append(p)
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
     json_paths.sort(key=lambda x: x.name)
@@ -95,7 +92,7 @@ async def main():
     successes: list[str] = []
     failures: list[tuple[str, str]] = []
 
-    for path, result in zip(json_paths, results):
+    for path, result in zip(json_paths, results, strict=False):
         name = path.name
         if isinstance(result, Exception):
             failures.append((name, f"exception: {result}"))

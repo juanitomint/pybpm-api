@@ -10,6 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+from app.models.case import BpmCase
 
 
 class Signal(Base):
@@ -32,9 +33,6 @@ class Signal(Base):
     # Relationships
     case = relationship("BpmCase", backref="signals_thrown")
 
-
-# Ensure BpmCase has the one-to-many relationship. Added here to avoid circular imports at module level.
-from app.models.case import BpmCase
 
 BpmCase.signals_thrown = relationship(  # type: ignore[attr-defined]
     "Signal",

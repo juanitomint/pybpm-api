@@ -127,7 +127,7 @@ class SchedulerService:
                     schedule.case_id,
                 )
 
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.error(
                     "SchedulerService: error dispatching schedule %d: %s",
                     schedule.idschedule,
@@ -141,7 +141,7 @@ class SchedulerService:
                 logger.info(
                     "SchedulerService: fired %d signal schedule(s)", signal_fired
                 )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.error("SchedulerService: error firing signal schedules: %s", exc)
 
         await self.db.flush()  # type: ignore[misc]
@@ -220,7 +220,7 @@ class SchedulerService:
                     schedule.resource_id,
                     schedule.case_id,
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.error(
                     "SchedulerService: error firing signal schedule %d: %s",
                     schedule.idschedule,

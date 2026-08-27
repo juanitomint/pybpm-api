@@ -24,7 +24,14 @@ async def seeded_pending_tokens(setup_test_db):
 
     factory = setup_test_db["factory"]
     tokens = [
-        Token(resource_id=f"r{i}", idwf="w1", case_id=f"c{i}", type="Task", status="user", assign=[1])
+        Token(
+            resource_id=f"r{i}",
+            idwf="w1",
+            case_id=f"c{i}",
+            type="Task",
+            status="user",
+            assign=[1],
+        )
         for i in range(5)
     ]
     async with factory() as s:
@@ -40,8 +47,13 @@ async def seeded_in_progress_tokens(setup_test_db):
 
     factory = setup_test_db["factory"]
     token = Token(
-        resource_id="r10", idwf="w2", case_id="c10", type="Task",
-        status="user", locked_by=1, assign=[1],
+        resource_id="r10",
+        idwf="w2",
+        case_id="c10",
+        type="Task",
+        status="user",
+        locked_by=1,
+        assign=[1],
     )
     async with factory() as s:
         s.add(token)
@@ -55,8 +67,12 @@ async def seeded_validating_tokens(setup_test_db):
 
     factory = setup_test_db["factory"]
     token = Token(
-        resource_id="r20", idwf="w3", case_id="c20", type="Task",
-        status="validating", assign=[1],
+        resource_id="r20",
+        idwf="w3",
+        case_id="c20",
+        type="Task",
+        status="validating",
+        assign=[1],
     )
     async with factory() as s:
         s.add(token)
@@ -70,8 +86,12 @@ async def seeded_done_tokens(setup_test_db):
 
     factory = setup_test_db["factory"]
     token = Token(
-        resource_id="r30", idwf="w4", case_id="c30", type="Task",
-        status="finished", assign=[1],
+        resource_id="r30",
+        idwf="w4",
+        case_id="c30",
+        type="Task",
+        status="finished",
+        assign=[1],
     )
     async with factory() as s:
         s.add(token)
@@ -79,10 +99,14 @@ async def seeded_done_tokens(setup_test_db):
 
 
 @pytest.mark.asyncio
-async def test_get_tasks_default_returns_pending(client, auth_headers, seeded_pending_tokens):
+async def test_get_tasks_default_returns_pending(
+    client, auth_headers, seeded_pending_tokens
+):
     """GET /dashboard/tasks without filter returns pending tasks (status='user', unlocked)."""
     response = await client.get("/dashboard/tasks", headers=auth_headers)
-    assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+    assert response.status_code == 200, (
+        f"Expected 200, got {response.status_code}: {response.text}"
+    )
     data = response.json()
     assert "tasks" in data
     assert "total" in data
@@ -93,12 +117,16 @@ async def test_get_tasks_default_returns_pending(client, auth_headers, seeded_pe
 
 
 @pytest.mark.asyncio
-async def test_get_tasks_in_progress_filter(client, auth_headers, seeded_in_progress_tokens):
+async def test_get_tasks_in_progress_filter(
+    client, auth_headers, seeded_in_progress_tokens
+):
     """GET /dashboard/tasks?status=in_progress returns locked tasks."""
     response = await client.get(
         "/dashboard/tasks?status=in_progress", headers=auth_headers
     )
-    assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+    assert response.status_code == 200, (
+        f"Expected 200, got {response.status_code}: {response.text}"
+    )
     data = response.json()
     tasks = data["tasks"]
     if len(tasks) > 0:
@@ -106,12 +134,16 @@ async def test_get_tasks_in_progress_filter(client, auth_headers, seeded_in_prog
 
 
 @pytest.mark.asyncio
-async def test_get_tasks_validating_filter(client, auth_headers, seeded_validating_tokens):
+async def test_get_tasks_validating_filter(
+    client, auth_headers, seeded_validating_tokens
+):
     """GET /dashboard/tasks?status=validating returns validating tasks."""
     response = await client.get(
         "/dashboard/tasks?status=validating", headers=auth_headers
     )
-    assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+    assert response.status_code == 200, (
+        f"Expected 200, got {response.status_code}: {response.text}"
+    )
     data = response.json()
     tasks = data["tasks"]
     if len(tasks) > 0:
@@ -121,10 +153,10 @@ async def test_get_tasks_validating_filter(client, auth_headers, seeded_validati
 @pytest.mark.asyncio
 async def test_get_tasks_done_filter(client, auth_headers, seeded_done_tokens):
     """GET /dashboard/tasks?status=done returns finished tasks."""
-    response = await client.get(
-        "/dashboard/tasks?status=done", headers=auth_headers
+    response = await client.get("/dashboard/tasks?status=done", headers=auth_headers)
+    assert response.status_code == 200, (
+        f"Expected 200, got {response.status_code}: {response.text}"
     )
-    assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
     data = response.json()
     tasks = data["tasks"]
     if len(tasks) > 0:
@@ -173,18 +205,14 @@ async def test_get_tasks_without_auth(client):
 @pytest.mark.asyncio
 async def test_get_tasks_invalid_page_param(client, auth_headers):
     """GET /dashboard/tasks with page < 1 returns 422."""
-    response = await client.get(
-        "/dashboard/tasks?page=0", headers=auth_headers
-    )
+    response = await client.get("/dashboard/tasks?page=0", headers=auth_headers)
     assert response.status_code == 422
 
 
 @pytest.mark.asyncio
 async def test_get_tasks_invalid_per_page_param(client, auth_headers):
     """GET /dashboard/tasks with per_page > 100 returns 422."""
-    response = await client.get(
-        "/dashboard/tasks?per_page=200", headers=auth_headers
-    )
+    response = await client.get("/dashboard/tasks?per_page=200", headers=auth_headers)
     assert response.status_code == 422
 
 
@@ -197,6 +225,16 @@ async def test_get_tasks_response_fields(client, auth_headers, seeded_pending_to
     tasks = data["tasks"]
     if len(tasks) > 0:
         first = tasks[0]
-        required_fields = ["resourceId", "type", "title", "status", "case_id", "idwf", "locked_by", "locked", "model_name"]
+        required_fields = [
+            "resourceId",
+            "type",
+            "title",
+            "status",
+            "case_id",
+            "idwf",
+            "locked_by",
+            "locked",
+            "model_name",
+        ]
         for field in required_fields:
             assert field in first, f"Missing field: {field}"

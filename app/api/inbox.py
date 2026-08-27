@@ -176,7 +176,9 @@ async def action_message(
                 starred=bool(message.is_starred),
             )
         except ValueError as exc:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+            ) from exc
 
     elif body.action == "read":
         try:
@@ -190,7 +192,9 @@ async def action_message(
                 read=bool(message.is_read),
             )
         except ValueError as exc:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+            ) from exc
 
     elif body.action == "tag":
         try:
@@ -198,7 +202,9 @@ async def action_message(
             await svc.set_tag(msgid, user_idu=user.idu, tag=tag)
             return MessageActionResponse(ok=True, msg="Tag set")
         except ValueError as exc:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+            ) from exc
 
     else:  # pragma: no cover — Literal guards this at the schema level
         raise HTTPException(
@@ -236,7 +242,9 @@ async def send(
             data={"msgid": str(msg.idmessage)},
         )
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
 
 
 @router.delete(
@@ -259,4 +267,6 @@ async def remove_msg(
             )
         return MessageOperationResponse(ok=True, msg="Message permanently deleted")
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc

@@ -10,8 +10,8 @@ The script:
      (defaults to admin/admin).
   3. Posts the decoded payload as JSON to /bpm/repository/save (idwf extracted from body.resourceId).
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import sys
 import urllib.parse
@@ -60,9 +60,9 @@ async def login(url: str, username: str, password: str) -> str | None:
             return None
         return resp.json()["access_token"]
 
+
 async def post_save(url: str, token: str, payload: dict[str, str]) -> httpx.Response:
     """Post the decoded raw payload as JSON to /bpm/repository/save."""
-    import json as _json
 
     url_path = f"{url}/api/v1/bpm/repository/save"
     async with httpx.AsyncClient() as client:

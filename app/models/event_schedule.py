@@ -29,6 +29,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+from app.models.case import BpmCase
 
 
 class EventSchedule(Base):
@@ -76,9 +77,6 @@ class EventSchedule(Base):
     # Relationships — EventSchedule.case_id has no FK constraint.
     # No back-reference on the EventSchedule side to avoid ambiguity without an FK.
 
-
-# Ensure BpmCase has the one-to-many relationship. Added here to avoid circular imports at module level.
-from app.models.case import BpmCase
 
 BpmCase.event_schedules = relationship(  # type: ignore[attr-defined]
     "EventSchedule",

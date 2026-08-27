@@ -39,7 +39,9 @@ class DataStorage:
                 self._data[k] = (
                     v
                     if isinstance(v, DataStorage)
-                    else DataStorage(v) if isinstance(v, dict) else v
+                    else DataStorage(v)
+                    if isinstance(v, dict)
+                    else v
                 )
 
     def __getattr__(self, name: str) -> Any:

@@ -4,61 +4,74 @@
 
 ## Architecture
 
+### System Architecture
+
+```mermaid
+graph TB
+    subgraph Clients["Clients"]
+        PA[pybpm-admin<br/>Port 8080]
+        PU[pybpm-ui<br/>Port 3000]
+        EC[External Clients]
+    end
+
+    subgraph API["pybpm-api FastAPI (Port 5000)"]
+        MW[Middleware<br/>CORS / NoCache]
+        R[Router<br/>/auth / /bpm / /dashboard<br/>/inbox / /schedule]
+        
+        subgraph Services["Service Layer"]
+            ES[EngineService]
+            BS[BpmService]
+            SS[SchedulerService]
+            IS[InboxService]
+            MS[ModelService]
+        end
+        
+        subgraph Handlers["Handler Layer"]
+            FH[Flow Handlers]
+            GH[Gate Handlers]
+            TH[Task Handler]
+            EH[Event Handlers]
+            SE[Start/End Handlers]
+            SH[Subprocess Handler]
+        end
+        
+        subgraph Persistence["Persistence"]
+            DB[(PostgreSQL<br/>/ SQLite)]
+            SVG[(SVG Files)]
+            SCH[APScheduler<br/>60s poll]
+        end
+        
+        MW --> R
+        R --> Services
+        Services --> Handlers
+        Handlers --> DB
+        Handlers --> SVG
+        SCH --> SS
+    end
+
+    PA -->|HTTP JSON| API
+    PU -->|HTTP JSON| API
+    EC -->|HTTP JSON| API
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                        Client Layer                          │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐ │
-│  │ pybpm-admin  │  │ pybpm-ui     │  │  External Clients │ │
-│  │ (Admin UI)   │  │ (Dashboard)  │  │                   │ │
-│  └──────┬───────┘  └──────┬───────┘  └────────┬──────────┘ │
-└─────────┼──────────────────┼────────────────────┼────────────┘
-          │                  │                    │
-          │  HTTP/JSON       │  HTTP/JSON         │  HTTP/JSON
-          ▼                  ▼                    ▼
-┌──────────────────────────────────────────────────────────────┐
-│                    FastAPI Application                       │
-│                    (main.py:5000)                            │
-│                                                              │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │              Middleware Stack                         │   │
-│  │  CORS → NoCache → Request → Router → Response        │   │
-│  └──────────────────────────────────────────────────────┘   │
-│                                                              │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
-│  │  /auth   │  │ /bpm     │  │ /dashboard│  │ /inbox  │   │
-│  │  /engine │  │ /cases   │  │ /tokens   │  │ /schedule│  │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘   │
-│       │              │              │              │         │
-│  ┌────▼──────────────▼──────────────▼──────────────▼─────┐  │
-│  │                   Service Layer                         │  │
-│  │  ┌────────────┐  ┌────────────┐  ┌────────────────┐   │  │
-│  │  │ EngineSvc  │  │ BpmSvc     │  │ SchedulerSvc   │   │  │
-│  │  │ InboxSvc   │  │ ModelSvc   │  │ EventSchedule  │   │  │
-│  │  │ SignalSvc  │  │            │  │                │   │  │
-│  │  └─────┬──────┘  └─────┬──────┘  └───────┬────────┘   │  │
-│  └────────┼────────────────┼──────────────────┼────────────┘  │
-│           │                │                  │               │
-│  ┌────────▼────────────────▼──────────────────▼────────────┐  │
-│  │                   Handler Layer                          │  │
-│  │  ┌────────────┐  ┌────────────┐  ┌────────────────┐    │  │
-│  │  │ Flow       │  │ Gate       │  │ Start/End      │    │  │
-│  │  │ Task       │  │ Event      │  │ Subprocess     │    │  │
-│  │  └────────────┘  └────────────┘  └────────────────┘    │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│                                                              │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │              Persistence Layer                         │   │
-│  │  ┌──────────────────┐  ┌─────────────────────────┐   │   │
-│  │  │ SQLAlchemy 2.0   │  │   APScheduler            │   │   │
-│  │  │  (async)         │  │   (BackgroundScheduler)  │   │   │
-│  │  └────────┬─────────┘  └────────────┬────────────┘   │   │
-│  └───────────┼──────────────────────────┼────────────────┘   │
-│              ▼                          ▼                      │
-│  ┌──────────────────────┐  ┌──────────────────────────┐     │
-│  │   PostgreSQL / SQLite │  │   SVG File Storage       │     │
-│  │   (pybpm.db)         │  │   (static/svg/)          │     │
-│  └──────────────────────┘  └──────────────────────────┘     │
-└──────────────────────────────────────────────────────────────┘
+
+### Token Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending
+    pending --> running: engine.run()
+    running --> user: TaskHandler (User/Manual)
+    running --> waiting: Timer/Message event
+    running --> done: EndNoneEvent
+    running --> cancelled: EndCancelEvent
+    running --> error: EndErrorEvent
+    user --> validating: validate_task
+    validating --> done: task_done
+    waiting --> running: scheduler dispatch
+    user --> running: post_task
+    done --> [*]
+    cancelled --> [*]
+    error --> [*]
 ```
 
 ## Tech Stack
@@ -175,81 +188,81 @@ The engine processes BPMN 2.0 models by dispatching tokens through a registry of
 
 ### Shape Handler Registry
 
-```
-                    ┌─────────────────────────┐
-                    │  ENGINE_HANDLER_REGISTRY │
-                    │  (stencil_id → handler)  │
-                    └──────────┬──────────────┘
-                               │
-        ┌──────────────────────┼──────────────────────┐
-        │                      │                      │
-   ┌────▼────┐          ┌─────▼─────┐          ┌─────▼─────┐
-   │ Start/  │          │  Gate     │          │  Event    │
-   │  End    │          │           │          │           │
-   │ Handlers│          │Handlers   │          │ Handlers  │
-   └─────────┘          └───────────┘          └───────────┘
-        │                      │                      │
-   StartNoneEvent     ParallelGateway    IntermediateTimerEvent
-   StartMessageEvent  ExclusiveDBGateway IntermediateMessageEvent
-   StartTimerEvent    EventbasedGateway  IntermediateSignalEvent
-   GenericStart*      GenericGateway*    IntermediateErrorEvent
-                      GenericGateway*    IntermediateConditionalEvent
-                                      IntermediateLinkEvent*
-                                      IntermediateMessageThrowing
-                                      IntermediateLinkThrowing
-                                      IntermediateSignalThrowing
-        │                      │                      │
-   ┌────▼────┐          ┌─────▼─────┐          ┌─────▼─────┐
-   │  Flow   │          │  Task     │          │ Subproc   │
-   │ Handlers│          │ Handler   │          │ Handlers  │
-   └─────────┘          └───────────┘          └───────────┘
-   SequenceFlow      Task (User/Manual/     CollapsedSubprocess
-   MessageFlow       Script/Send/Receive)   InlineSubprocess
+```mermaid
+graph LR
+    HR[ENGINE_HANDLER_REGISTRY<br/>stencil_id → handler]
+    
+    HR --> Start[Start/End Handlers]
+    HR --> Gate[Gate Handlers]
+    HR --> Event[Event Handlers]
+    HR --> Flow[Flow Handlers]
+    HR --> Task[Task Handler]
+    HR --> Subproc[Subprocess Handler]
+    
+    Start --> SN[StartNoneEvent]
+    Start --> SM[StartMessageEvent]
+    Start --> ST[StartTimerEvent]
+    Start --> SG[GenericStart*]
+    
+    Gate --> PG[ParallelGateway]
+    Gate --> EG[ExclusiveDBGateway]
+    Gate --> GB[EventbasedGateway]
+    Gate --> GG[GenericGateway*]
+    
+    Event --> ITE[IntermediateTimerEvent]
+    Event --> IME[IntermediateMessageEvent]
+    Event --> ISG[IntermediateSignalEvent]
+    Event --> IER[IntermediateErrorEvent]
+    Event --> ICE[IntermediateConditionalEvent]
+    Event --> IMT[IntermediateMessageThrowing]
+    Event --> ILT[IntermediateLinkThrowing]
+    Event --> IST[IntermediateSignalThrowing]
+    
+    Flow --> SF[SequenceFlow]
+    Flow --> MF[MessageFlow]
+    
+    Task --> TK[Task<br/>User/Manual/Script/Send/Receive]
+    
+    Subproc --> CS[CollapsedSubprocess]
+    Subproc --> IS[InlineSubprocess]
 ```
 
 ### Engine Execution Flow
 
-```
-  Client                    API Router              Engine Service        Handler Registry
-    │                         │                        │                      │
-    │  POST /bpm/engine/run   │                        │                      │
-    │────────────────────────>│                        │                      │
-    │                         │                        │                      │
-    │                         │  load model + case     │                      │
-    │                         │  from DB               │                      │
-    │                         │                        │                      │
-    │                         │  ┌───────────────────────────────────────┐   │
-    │                         │  │  Engine Loop (iterative)              │   │
-    │                         │  │                                       │   │
-    │                         │  │  1. Find pending tokens              │   │
-    │                         │  │  2. For each token:                  │   │
-    │                         │  │     a. Look up shape handler         │   │
-    │                         │  │     b. Call handler.handle(token)    │   │
-    │                         │  │     c. Handler may:                  │   │
-    │                         │  │        - movenext (advance token)    │   │
-    │                         │  │        - create child case           │   │
-    │                         │  │        - wait for event              │   │
-    │                         │  │        - evaluate condition          │   │
-    │                         │  │        - create inbox message        │   │
-    │                         │  │  3. Persist token state            │   │
-    │                         │  │  4. Repeat until no pending tokens  │   │
-    │                         │  └───────────────────────────────────────┘   │
-    │                         │                        │                      │
-    │  RunResponse {ok:true} │                        │                      │
-    │<────────────────────────│                        │                      │
-    │                         │                        │                      │
-```
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as API Router
+    participant ES as EngineService
+    participant HR as Handler Registry
+    participant DB as Database
 
-### Token Lifecycle
-
-```
-      pending ──► running ──► user ──► validating ──► done
-         │         │          │
-         │         │          └─► waiting (timer/event)
-         │         │
-         │         └─► waiting (timer/event)
-         │
-         └─► cancelled / error
+    Client->>API: POST /bpm/engine/run/{idwf}/{idcase}
+    API->>DB: Load model + case
+    DB-->>API: model JSON, case data
+    
+    loop Engine Loop (iterative)
+        API->>ES: find pending tokens
+        ES->>DB: query tokens where status='pending'
+        DB-->>ES: pending tokens
+        
+        loop For each token
+            ES->>HR: lookup handler by stencil_id
+            HR-->>ES: ShapeHandler class
+            ES->>HR: handler.handle(token, shape, service)
+            
+            alt handler returns True (consumed)
+                Note over ES,HR: Token processed, no movenext
+            else handler returns False
+                ES->>DB: movenext token
+                DB-->>ES: updated tokens
+            end
+        end
+        
+        ES->>DB: persist token state
+    end
+    
+    API-->>Client: RunResponse {ok: true}
 ```
 
 ### Handler Interface

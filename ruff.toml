@@ -1,7 +1,10 @@
 [lint]
 select = ["E", "F", "W", "C90", "N", "B", "SIM", "RUF", "UP", "I"]
 ignore = [
-    "B008",
+    "B008",    # FastAPI Depends() support
+    "RUF012",  # Mutable class attributes should be annotated (Flags SQLAlchemy columns)
+    "A003",    # Class attribute is shadowing a Python builtin (Flags columns named 'id', 'type')
     "C901",
     "E501",
+    "FURB191",
 ]

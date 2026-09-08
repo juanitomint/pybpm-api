@@ -25,6 +25,8 @@ from extensions import get_async_db
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+# Module-level state for tests that need direct access to the test DB factory.
+_state: type = type("_state", (), {"_factory": None})  # type: ignore[attr-defined]
 
 @pytest.fixture(scope="function", autouse=True)
 async def setup_test_db():
@@ -40,6 +42,7 @@ async def setup_test_db():
     db_file = Path(db_path.split("///")[1])
     engine = create_async_engine(db_path, echo=False)
     factory = async_sessionmaker(bind=engine, class_=AsyncSession)
+    _state._factory = factory  # type: ignore[attr-defined]
 
     async with engine.begin() as conn:
         await conn.run_sync(_ModelBase.metadata.create_all)
@@ -118,7 +121,7 @@ async def test_client(setup_test_db):
     _ext.async_session_factory.kw["bind"] = db_info["engine"]
     import app.api.inbox as _inbox_mod
 
-    _inbox_mod.get_async_db = override_get_async_db
+    _inbox_mod.get_async_db = override_get_async_db  # type: ignore[attr-defined]
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

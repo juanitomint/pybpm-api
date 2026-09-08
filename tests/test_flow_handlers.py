@@ -9,6 +9,7 @@ import pytest
 from app.handlers.flow import MessageFlowHandler, SequenceFlowHandler
 
 
+@pytest.fixture
 def mock_service():
     """Create a mock EngineService with async methods."""
     service = MagicMock()

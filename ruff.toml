@@ -6,5 +6,4 @@ ignore = [
     "A003",    # Class attribute is shadowing a Python builtin (Flags columns named 'id', 'type')
     "C901",
     "E501",
-    "FURB191",
 ]

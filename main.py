@@ -82,7 +82,7 @@ async def lifespan(app: FastAPI):
                 continue
 
             for method in methods:
-                entry = f"{method.lower()}:{stripped}"
+                entry = f"{stripped}:{method.lower()}"
                 if entry not in existing_paths:
                     await svc.put_path(entry, {"source": "auto"})
                     existing_paths.add(entry)

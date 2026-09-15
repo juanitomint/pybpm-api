@@ -23,6 +23,9 @@ class PermissionRepository(Base):
     source: Mapped[str | None] = mapped_column(
         String(64)
     )  # MongoDB 'properties.source' (e.g. 'Setup')
+    idu: Mapped[int | None] = mapped_column(
+        Integer
+    )  # MongoDB 'properties.idu' (user who created/last touched)
     check_date: Mapped[sa.DateTime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )  # MongoDB 'properties.checkdate'

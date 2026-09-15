@@ -29,9 +29,10 @@ async def get_repository(
 async def create_path(
     path: str = Query(...),
     db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
 ):
     svc = RbacService(db)
-    await svc.put_path(path, {"source": "User"})
+    await svc.put_path(path, {"source": "User"}, idu=current_user.idu)
     return {"success": True}
 
 
@@ -40,6 +41,7 @@ async def save_repository(
     idgroup: int = Query(...),
     paths: list[str] = Query(...),
     db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_user),
 ):
     svc = RbacService(db)
     final = await svc.set_group_paths(idgroup, paths)

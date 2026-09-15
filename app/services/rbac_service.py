@@ -25,8 +25,14 @@ class RbacService:
         result = await self.db.execute(select(PermissionRepository))
         return list(result.scalars().all())
 
-    async def put_path(self, path: str, properties: dict) -> PermissionRepository:
-        """Upsert a path into permission_repository."""
+    async def put_path(self, path: str, properties: dict, idu: int | None = None) -> PermissionRepository:
+        """Upsert a path into permission_repository.
+
+        Args:
+            path: resource path.
+            properties: dict with optional 'source', 'check_date'.
+            idu: user ID who performed the action.
+        """
         result = await self.db.execute(
             select(PermissionRepository).where(PermissionRepository.path == path)
         )
@@ -35,15 +41,16 @@ class RbacService:
             entry.path = path
             entry.source = properties.get("source", entry.source)
             entry.check_date = properties.get("check_date", entry.check_date)
+            if idu is not None:
+                entry.idu = idu
         else:
             entry = PermissionRepository(
                 path=path,
                 source=properties.get("source"),
+                idu=idu,
                 check_date=properties.get("check_date"),
             )
             self.db.add(entry)
-        await self.db.flush()
-        return entry
 
     async def remove_path(self, path: str) -> bool:
         """Remove a path from permission_repository."""
@@ -111,16 +118,45 @@ class RbacService:
     async def get_tree(
         self, node: str | None = None, sort: str | None = None
     ) -> list[dict]:
-        """Return repository as nested tree structure (Ext JS format).
+        """Return repository as nested tree structure (Ext JS tree format).
 
-        Args:
-            node: node id to load children for ("root" = full tree).
-            sort: Ext JS sort param — JSON array of {property, direction}.
+        Entries are stored as 'path:method' (e.g. 'GET /bpm/engine/execute').
+        The tree is built by splitting route paths into segments. Leaf nodes
+        carry the HTTP method in their data and use 'path:method' as their ID
+        so the client's rec.data.id matches the DB format.
         """
         entries = await self.get_repository()
 
-        # Parse sort param if provided
-        sorters = []
+        # Parse entries into (route_path, method, data) tuples
+        parsed: list[tuple[str, str, dict[str, Any]]] = []
+        for e in entries:
+            raw = e.path
+            colon_idx = raw.rfind(":")
+            if colon_idx >= 0:
+                route = raw[:colon_idx]
+                method = raw[colon_idx + 1:]
+            else:
+                route = raw
+                method = ""
+            parsed.append((route, method, {
+                "source": e.source,
+                "checkdate": e.check_date.strftime("%Y-%m-%d %H:%M:%S") if e.check_date else None,
+                "idu": e.idu,
+            }))
+
+        # Group by route path for method-level children
+        route_groups: dict[str, list[tuple[str, dict]]] = {}
+        for route, method, data in parsed:
+            route_groups.setdefault(route, []).append((method, data))
+
+        # Build a lookup: full path (with method) -> data
+        entry_map: dict[str, dict[str, Any]] = {}
+        for route, method, data in parsed:
+            key = f"{route}:{method}" if method else route
+            entry_map[key] = data
+
+        # Parse sort param
+        sorters: list[dict[str, str]] = []
         if sort:
             try:
                 import json
@@ -134,59 +170,122 @@ class RbacService:
                 direction = s.get("direction", "ASC")
                 reverse = direction == "DESC"
                 if prop == "path":
-                    entries = sorted(entries, key=lambda e: e.path, reverse=reverse)
+                    parsed.sort(key=lambda x: x[0], reverse=reverse)
+
+        def _build_children(parent_path: str, depth: int, is_root: bool = False, db_prefix: str | None = None) -> list[dict]:
+            """Recursively build children for a given parent path."""
+            children_map: dict[str, list[tuple[str, str, dict]]] = {}
+
+            if is_root:
+                for route, method, data in parsed:
+                    if not route.strip("/"):
+                        continue
+                    top = route.strip("/").split("/")[0]
+                    children_map.setdefault(top, []).append((route, method, data))
+            elif db_prefix:
+                prefix = db_prefix.rstrip("/") + "/"
+                for route, method, data in parsed:
+                    route_cmp = route.lstrip("/")
+                    if not route_cmp.startswith(prefix.lstrip("/")):
+                        continue
+                    rest = route_cmp[len(prefix.lstrip("/")):]
+                    top = rest.split("/")[0] if rest else ""
+                    children_map.setdefault(top, []).append((route, method, data))
+            else:
+                prefix = parent_path.rstrip("/") + "/"
+                for route, method, data in parsed:
+                    route_cmp = route.lstrip("/")
+                    if not route_cmp.startswith(prefix.lstrip("/")):
+                        continue
+                    rest = route_cmp[len(prefix.lstrip("/")):]
+                    top = rest.split("/")[0] if rest else ""
+                    children_map.setdefault(top, []).append((route, method, data))
+
+            result: list[dict] = []
+            for top_name in sorted(children_map.keys()):
+                items = children_map[top_name]
+
+                # Determine if this node has children or is a leaf with method children
+                has_path_children = False
+                has_method_children = False
+                for route, method, data in items:
+                    rest = route.strip("/").split("/")
+                    if len(rest) > depth + 1:
+                        has_path_children = True
+                    if method:
+                        has_method_children = True
+
+                child_path = f"{parent_path}/{top_name}"
+                has_children = has_path_children or has_method_children
+
+                # Check for direct repo entry on this node
+                node_data: dict[str, Any] | None = None
+                if child_path in entry_map:
+                    node_data = entry_map[child_path]
+
+                node: dict[str, Any] = {
+                    "id": child_path,
+                    "text": top_name,
+                    "leaf": not has_children,
+                    "checked": False,
+                    "expanded": False,
+                }
+
+                if node_data:
+                    node["iconCls"] = "dot-green"
+                    node["data"] = node_data
+                elif has_children:
+                    node["iconCls"] = "dot-green"
+
+                if has_children:
+                    # If has path children, recurse; otherwise show methods as children
+                    if has_path_children:
+                        node["children"] = _build_children(
+                            child_path, depth + 1,
+                            db_prefix=child_path[5:] if child_path.startswith("root/") else child_path,
+                        )
+                    else:
+                        # No more path children — show methods as leaf nodes
+                        # Each method gets its own leaf with DB-format ID (strip root/ prefix)
+                        method_groups: dict[str, dict] = {}
+                        for route, method, data in items:
+                            if method:
+                                method_groups.setdefault(method, data)
+                        leaf_prefix = "/" + child_path[5:] if child_path.startswith("root/") else child_path
+                        node["children"] = []
+                        for method in sorted(method_groups.keys()):
+                            node["children"].append({
+                                "id": f"{leaf_prefix}:{method}",
+                                "text": method,
+                                "leaf": True,
+                                "checked": False,
+                                "expanded": False,
+                                "iconCls": "dot-green",
+                                "data": method_groups[method],
+                            })
+
+                result.append(node)
+
+            return result
 
         if node == "root" or node is None:
-            # Return full tree from root
-            root: dict[str, Any] = {"text": "root", "id": "root", "children": [], "expanded": True}
-
-            for entry in entries:
-                parts = entry.path.strip("/").split("/")
-                current = root
-                for i, part in enumerate(parts):
-                    children = current.setdefault("children", [])
-                    existing = next(
-                        (c for c in children if c["text"] == part), None
-                    )
-                    if existing:
-                        current = existing
-                    else:
-                        is_leaf = (i == len(parts) - 1)
-                        full_path = "/".join(parts[: i + 1])
-                        new_node = {
-                            "id": full_path,
-                            "text": part,
-                            "leaf": is_leaf,
-                            "cls": "dot-green" if is_leaf else "",
-                            "expanded": not is_leaf,
-                        }
-                        if "children" not in new_node:
-                            new_node["children"] = []
-                        children.append(new_node)
-                        current = new_node
-
+            root: dict[str, Any] = {
+                "id": "root/root",
+                "text": "root",
+                "leaf": False,
+                "checked": False,
+                "expanded": False,
+                "children": _build_children("root", 0, is_root=True),
+            }
             return [root]
 
-        # Return children of a specific node
+        # Return children of a specific node (lazy load)
         target_path = node.rstrip("/")
-        children: list[dict] = []
-        seen: set[str] = set()
-
-        for entry in entries:
-            path = entry.path.strip("/")
-            if not path.startswith(target_path + "/"):
-                continue
-            rest = path[len(target_path) + 1:]
-            top = rest.split("/")[0]
-            if top not in seen:
-                seen.add(top)
-                children.append({
-                    "id": f"{target_path}/{top}",
-                    "text": top,
-                    "leaf": "/" not in rest,
-                    "cls": "dot-green" if "/" not in rest else "",
-                    "expanded": False,
-                })
+        if target_path.startswith("root/"):
+            db_prefix = target_path[5:]
+        else:
+            db_prefix = target_path
+        children = _build_children(target_path, len(db_prefix.rstrip("/").split("/")), db_prefix=db_prefix)
 
         if sorters:
             for s in reversed(sorters):

@@ -23,6 +23,15 @@ from app.schemas.repository import (
     SaveResponse,
     ScriptRequest,
 )
+from app.schemas.user import (
+    GroupCreate,
+    GroupRead,
+    GroupUpdate,
+    ProfileUpdate,
+    UserCreate,
+    UserRead,
+    UserUpdate,
+)
 
 __all__ = [
     "CheckResponse",
@@ -31,6 +40,9 @@ __all__ = [
     "FolderMessagesRequest",
     "FolderMessagesResponse",
     "FolderUpdate",
+    "GroupCreate",
+    "GroupRead",
+    "GroupUpdate",
     "MessageActionRequest",
     "MessageActionResponse",
     "MessageCounts",
@@ -40,10 +52,14 @@ __all__ = [
     "ModelCreateResponse",
     "ModelDuplicateRequest",
     "ModelRead",
+    "ProfileUpdate",
     "SaveAsRequest",
     "SaveModelRequest",
     "SaveResponse",
     "ScriptRequest",
+    "UserCreate",
+    "UserRead",
     "UserSearchResponse",
     "UserSearchResult",
+    "UserUpdate",
 ]

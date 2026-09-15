@@ -25,6 +25,10 @@ pybpm-api/
 │   ├── api/                # FastAPI Routers (Endpoints)
 │   │   ├── __init__.py
 │   │   ├── auth.py         # Auth & Identity endpoints
+│   │   ├── admin.py        # Admin user management
+│   │   ├── admin_groups.py # Admin group management
+│   │   ├── rbac.py         # RBAC management
+│   │   ├── profile.py      # User profile endpoints
 │   │   └── bpm/            # BPM core logic (one controller per file)
 │   │       ├── __init__.py
 │   │       └── repository.py  # Model CRUD, mirrors Repository.php
@@ -32,13 +36,22 @@ pybpm-api/
 │   │   ├── __init__.py
 │   │   ├── base.py         # DeclarativeBase
 │   │   ├── bpm_model.py    # BPMN model definitions
-│   │   └── user.py         # User accounts
+│   │   ├── user.py         # User accounts
+│   │   ├── group.py        # User groups
+│   │   ├── user_group.py   # User-group junction
+│   │   ├── permission_repository.py
+│   │   └── permission_group.py
 │   ├── schemas/            # Pydantic Models (Request/Response)
 │   │   ├── __init__.py
-│   │   └── repository.py   # Model request/response schemas
+│   │   ├── repository.py   # Model request/response schemas
+│   │   └── user.py         # User/group/profile schemas
 │   ├── services/           # Business Logic (Service Layer)
 │   │   ├── __init__.py
-│   │   └── model_service.py  # BPMN model business logic
+│   │   ├── model_service.py  # BPMN model business logic
+│   │   ├── user_service.py
+│   │   ├── group_service.py
+│   │   ├── rbac_service.py
+│   │   └── profile_service.py
 │   └── core/               # Security, Constants, Utilities
 │       └── auth.py         # JWT bearer dependency
 │
@@ -134,9 +147,24 @@ echo "APP_PORT=5001" >> .env && uv run uvicorn main:app --reload
 
 When using `APP_PORT=5001`, point clients (editor, UI, scripts) at `http://localhost:5001` instead of the default `http://localhost:5000`.
 
+### ⚠️ Never Kill Running Servers
+
+**The dev server uses `--reload` and restarts on every file change. NEVER kill it.**
+
+When you need a separate server instance for testing, scripting, or tooling, always use a **different port** (5001 or higher):
+
 ```bash
+# ✅ CORRECT — test on port 5001, dev server stays alive:
+APP_PORT=5001 uv run uvicorn main:app --host 0.0.0.0 --port 5001
+
 # ❌ WRONG — kills your dev server:
-fuser -k 5000/tcp   # NEVER do this unless explicitly cleaning up stale processes
+pkill -f "uvicorn main:app"   # NEVER do this
+fuser -k 5000/tcp             # NEVER do this
+```
+
+If you need to stop a test server, kill it by PID or port explicitly:
+```bash
+pkill -f "uvicorn.*5001"      # Only kill port 5001, never port 5000
 ```
 
 ### Linting & Formatting

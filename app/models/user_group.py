@@ -1,5 +1,5 @@
 from sqlalchemy import ForeignKey, Integer
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
 
@@ -22,3 +22,7 @@ class UserGroup(Base):
     idgroup: Mapped[int] = mapped_column(
         Integer(), ForeignKey("groups.idgroup"), primary_key=True
     )
+
+    # Relationships
+    user = relationship("User", back_populates="groups")
+    group = relationship("Group", back_populates="users")

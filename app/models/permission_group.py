@@ -17,4 +17,7 @@ class PermissionGroup(Base):
     path: Mapped[str] = mapped_column(
         String(255), nullable=False, index=True
     )  # resource path (e.g. 'root/modules/bpm')
+    source: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )  # source of the permission entry (e.g. 'api', 'manual')
     idgroup: Mapped[int] = mapped_column(Integer(), ForeignKey("groups.idgroup"))

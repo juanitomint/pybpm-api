@@ -84,7 +84,7 @@ async def lifespan(app: FastAPI):
             for method in methods:
                 entry = f"{stripped}:{method.lower()}"
                 if entry not in existing_paths:
-                    await svc.put_path(entry, {"source": "auto"})
+                    await svc.put_path(entry, {"source": "autoregister"})
                     existing_paths.add(entry)
                     registered += 1
         await db.commit()

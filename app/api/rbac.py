@@ -28,11 +28,12 @@ async def get_repository(
 @router.post("/repository")
 async def create_path(
     path: str = Query(...),
+    source: str = Query("api"),
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
     svc = RbacService(db)
-    await svc.put_path(path, {"source": "User"}, idu=current_user.idu)
+    await svc.put_path(path, {"source": source}, idu=current_user.idu)
     return {"success": True}
 
 
@@ -40,12 +41,12 @@ async def create_path(
 async def save_repository(
     idgroup: int = Query(...),
     paths: list[str] = Query(...),
+    source: str = Query("api"),
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_user),
 ):
     svc = RbacService(db)
-    final = await svc.set_group_paths(idgroup, paths)
-    return {"success": True, "paths": final}
+    final = await svc.set_group_paths(idgroup, paths, source=source)
 
 
 @router.delete("/repository")

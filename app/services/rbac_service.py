@@ -83,7 +83,7 @@ class RbacService:
         await self.db.flush()
         return count
 
-    async def add_path_to_group(self, path: str, idgroup: int) -> PermissionGroup:
+    async def add_path_to_group(self, path: str, idgroup: int, source: str = "api") -> PermissionGroup:
         """Add (upsert) a path-to-group mapping."""
         result = await self.db.execute(
             select(PermissionGroup).where(
@@ -93,16 +93,16 @@ class RbacService:
         )
         entry = result.scalar_one_or_none()
         if entry is None:
-            entry = PermissionGroup(idgroup=idgroup, path=path)
+            entry = PermissionGroup(idgroup=idgroup, path=path, source=source)
             self.db.add(entry)
         await self.db.flush()
         return entry
 
-    async def set_group_paths(self, idgroup: int, paths: list[str]) -> list[str]:
+    async def set_group_paths(self, idgroup: int, paths: list[str], source: str = "api") -> list[str]:
         """Clear existing paths, add new ones, return final list."""
         await self.clear_paths(idgroup)
         for path in paths:
-            await self.add_path_to_group(path, idgroup)
+            await self.add_path_to_group(path, idgroup, source=source)
         return await self.get_group_paths(idgroup)
 
     async def has_path(self, idgroup: int, path: str) -> bool:

@@ -22,7 +22,7 @@ async def get_repository(
 ):
     svc = RbacService(db)
     tree = await svc.get_tree(node=node, sort=sort)
-    return {"tree": tree}
+    return tree
 
 
 @router.post("/repository")

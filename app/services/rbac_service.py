@@ -171,7 +171,6 @@ class RbacService:
                 reverse = direction == "DESC"
                 if prop == "path":
                     parsed.sort(key=lambda x: x[0], reverse=reverse)
-
         def _build_children(parent_path: str, depth: int, is_root: bool = False, db_prefix: str | None = None) -> list[dict]:
             """Recursively build children for a given parent path."""
             children_map: dict[str, list[tuple[str, str, dict]]] = {}
@@ -224,7 +223,7 @@ class RbacService:
                     node_data = entry_map[child_path]
 
                 node: dict[str, Any] = {
-                    "id": child_path,
+                    "id": child_path.replace("/", "/"),
                     "text": top_name,
                     "leaf": not has_children,
                     "checked": False,
@@ -234,8 +233,6 @@ class RbacService:
                 if node_data:
                     node["iconCls"] = "dot-green"
                     node["data"] = node_data
-                elif has_children:
-                    node["iconCls"] = "dot-green"
 
                 if has_children:
                     # If has path children, recurse; otherwise show methods as children
@@ -255,7 +252,7 @@ class RbacService:
                         node["children"] = []
                         for method in sorted(method_groups.keys()):
                             node["children"].append({
-                                "id": f"{leaf_prefix}:{method}",
+                                "id": f"{leaf_prefix}:{method}".replace("/", "/"),
                                 "text": method,
                                 "leaf": True,
                                 "checked": False,
@@ -269,23 +266,21 @@ class RbacService:
             return result
 
         if node == "root" or node is None:
-            root: dict[str, Any] = {
-                "id": "root/root",
-                "text": "root",
-                "leaf": False,
-                "checked": False,
-                "expanded": False,
-                "children": _build_children("root", 0, is_root=True),
-            }
-            return [root]
+            # Match legacy Rbac_admin::repository('read'): return the root's
+            # children as a flat array (Ext TreeStore + rootVisible:true
+            # supplies the synthetic root itself).
+            return _build_children("root", 0, is_root=True)
 
-        # Return children of a specific node (lazy load)
+        # Return children of a specific node (lazy load on expand)
         target_path = node.rstrip("/")
         if target_path.startswith("root/"):
             db_prefix = target_path[5:]
         else:
             db_prefix = target_path
-        children = _build_children(target_path, len(db_prefix.rstrip("/").split("/")), db_prefix=db_prefix)
+        # depth == number of segments in the node's stored path prefix,
+        # which equals the slash count of "root/<prefix>".
+        depth = target_path.count("/")
+        children = _build_children(target_path, depth, db_prefix=db_prefix)
 
         if sorters:
             for s in reversed(sorters):
@@ -293,6 +288,5 @@ class RbacService:
                 direction = s.get("direction", "ASC")
                 reverse = direction == "DESC"
                 if prop == "text":
-                    children = sorted(children, key=lambda c: c["text"], reverse=reverse)
-
+                    children.sort(key=lambda c: c["text"], reverse=reverse)
         return children

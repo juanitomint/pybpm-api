@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
+import json
 
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
+from fastapi.responses import Response
 from app.api.auth import get_current_user
 from app.models.user import User
 from app.services.rbac_service import RbacService
@@ -22,20 +23,22 @@ async def get_repository(
 ):
     svc = RbacService(db)
     tree = await svc.get_tree(node=node, sort=sort)
-    return tree
-
+    # Match legacy PHP json_encode() default (escaped slashes); wrap under
+    # Ext JS Ajax proxy expects data at response["data"]
+    json_str = json.dumps({"data": tree}, separators=(",", ":"))
+    return Response(content=json_str, media_type="application/json")
 
 @router.post("/repository")
-async def create_path(
-    path: str = Query(...),
-    source: str = Query("api"),
+async def read_repository(
+    request: Request,
+    node: str | None = Form(default=None),
+    sort: str | None = Form(default=None),
     db: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_user),
 ):
     svc = RbacService(db)
-    await svc.put_path(path, {"source": source}, idu=current_user.idu)
-    return {"success": True}
-
+    tree = await svc.get_tree(node=node, sort=sort)
+    json_str = json.dumps({"data": tree}, separators=(",", ":"))
+    return Response(content=json_str, media_type="application/json")
 
 @router.put("/repository")
 async def save_repository(

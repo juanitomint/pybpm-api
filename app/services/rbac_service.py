@@ -242,24 +242,31 @@ class RbacService:
                             db_prefix=child_path[5:] if child_path.startswith("root/") else child_path,
                         )
                     else:
-                        # No more path children — show methods as leaf nodes
-                        # Each method gets its own leaf with DB-format ID (strip root/ prefix)
+                        # No more path children — append method to text/id
                         method_groups: dict[str, dict] = {}
                         for route, method, data in items:
                             if method:
                                 method_groups.setdefault(method, data)
-                        leaf_prefix = "/" + child_path[5:] if child_path.startswith("root/") else child_path
-                        node["children"] = []
-                        for method in sorted(method_groups.keys()):
-                            node["children"].append({
-                                "id": f"{leaf_prefix}:{method}".replace("/", "\\/"),
-                                "text": method,
-                                "leaf": True,
-                                "checked": False,
-                                "expanded": False,
-                                "iconCls": "dot-green",
-                                "data": method_groups[method],
-                            })
+                        leaf_prefix = "root/" + child_path[5:] if child_path.startswith("root/") else child_path
+                        if len(method_groups) == 1:
+                            method, method_data = next(iter(method_groups.items()))
+                            node["text"] = f"{top_name}:{method}"
+                            node["id"] = f"{leaf_prefix}:{method}".replace("/", "\\/")
+                            node["leaf"] = True
+                            node["iconCls"] = "dot-green"
+                            node["data"] = method_data
+                        else:
+                            # Multiple methods: create one leaf per method
+                            for method in sorted(method_groups.keys()):
+                                result.append({
+                                    "id": f"{leaf_prefix}:{method}".replace("/", "\\/"),
+                                    "text": f"{top_name}:{method}",
+                                    "leaf": True,
+                                    "checked": False,
+                                    "expanded": False,
+                                    "iconCls": "dot-green",
+                                    "data": method_groups[method],
+                                })
 
                 result.append(node)
 

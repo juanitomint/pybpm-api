@@ -152,7 +152,7 @@ class RbacService:
         # Build a lookup: full path (with method) -> data
         entry_map: dict[str, dict[str, Any]] = {}
         for route, method, data in parsed:
-            key = f"{route}:{method}" if method else route
+            key = f"root/{route}:{method}" if method else f"root/{route}"
             entry_map[key] = data
 
         # Parse sort param
@@ -223,7 +223,7 @@ class RbacService:
                     node_data = entry_map[child_path]
 
                 node: dict[str, Any] = {
-                    "id": child_path.replace("/", "/"),
+                    "id": child_path.replace("/", "\\/"),
                     "text": top_name,
                     "leaf": not has_children,
                     "checked": False,
@@ -252,7 +252,7 @@ class RbacService:
                         node["children"] = []
                         for method in sorted(method_groups.keys()):
                             node["children"].append({
-                                "id": f"{leaf_prefix}:{method}".replace("/", "/"),
+                                "id": f"{leaf_prefix}:{method}".replace("/", "\\/"),
                                 "text": method,
                                 "leaf": True,
                                 "checked": False,
@@ -266,10 +266,15 @@ class RbacService:
             return result
 
         if node == "root" or node is None:
-            # Match legacy Rbac_admin::repository('read'): return the root's
-            # children as a flat array (Ext TreeStore + rootVisible:true
-            # supplies the synthetic root itself).
-            return _build_children("root", 0, is_root=True)
+            children = _build_children("root", 0, is_root=True)
+            return [{
+                "id": "root\\/root",
+                "text": "root",
+                "leaf": False,
+                "checked": False,
+                "expanded": False,
+                "children": children,
+            }]
 
         # Return children of a specific node (lazy load on expand)
         target_path = node.rstrip("/")

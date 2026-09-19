@@ -266,15 +266,7 @@ class RbacService:
             return result
 
         if node == "root" or node is None:
-            children = _build_children("root", 0, is_root=True)
-            return [{
-                "id": "root\\/root",
-                "text": "root",
-                "leaf": False,
-                "checked": False,
-                "expanded": False,
-                "children": children,
-            }]
+            return _build_children("root", 0, is_root=True)
 
         # Return children of a specific node (lazy load on expand)
         target_path = node.rstrip("/")

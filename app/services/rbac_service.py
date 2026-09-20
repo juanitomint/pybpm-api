@@ -237,19 +237,6 @@ class RbacService:
                 if has_children:
                     # If has path children, recurse; otherwise show methods as children
                     if has_path_children:
-                        # Check if this node itself has a direct DB method entry
-                        node_method: str | None = None
-                        node_method_data: dict | None = None
-                        prefix = child_path[5:] if child_path.startswith("root/") else child_path
-                        for route, method, data in items:
-                            if method and route.lstrip("/").startswith(prefix + "/"):
-                                node_method = method
-                                node_method_data = data
-                        if node_method:
-                            node["text"] = f"{top_name}:{node_method}"
-                            node["id"] = f"root/{prefix}:{node_method}".replace("/", "\\/")
-                            node["iconCls"] = "dot-green"
-                            node["data"] = node_method_data
                         node["children"] = _build_children(
                             child_path, depth + 1,
                             db_prefix=child_path[5:] if child_path.startswith("root/") else child_path,

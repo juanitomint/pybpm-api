@@ -127,8 +127,8 @@ class RbacService:
         """
         entries = await self.get_repository()
 
-        # Parse entries into (route_path, method, data) tuples
-        parsed: list[tuple[str, str, dict[str, Any]]] = []
+        # Build a nested dict tree (trie) from DB entries
+        root: dict = {}
         for e in entries:
             raw = e.path
             colon_idx = raw.rfind(":")
@@ -138,159 +138,134 @@ class RbacService:
             else:
                 route = raw
                 method = ""
-            parsed.append((route, method, {
+
+            data = {
                 "source": e.source,
                 "checkdate": e.check_date.strftime("%Y-%m-%d %H:%M:%S") if e.check_date else None,
                 "idu": e.idu,
-            }))
+            }
 
-        # Group by route path for method-level children
-        route_groups: dict[str, list[tuple[str, dict]]] = {}
-        for route, method, data in parsed:
-            route_groups.setdefault(route, []).append((method, data))
+            segments = [s for s in route.strip("/").split("/") if s]
+            current = root
+            current_node = None
+            for i, seg in enumerate(segments):
+                is_last = (i == len(segments) - 1)
+                if seg not in current:
+                    if is_last:
+                        current[seg] = {
+                            "text": seg,
+                            "leaf": True,
+                            "methods": {},
+                        }
+                    else:
+                        current[seg] = {
+                            "text": seg,
+                            "leaf": False,
+                            "children": {},
+                        }
+                elif current[seg].get("leaf") and not is_last:
+                    # Existing leaf needs to become non-leaf (longer path passes through)
+                    existing = current[seg]
+                    current[seg] = {
+                        "text": existing["text"],
+                        "leaf": False,
+                        "children": {},
+                        "methods": existing.get("methods", {}),
+                    }
+                # Navigate: track the node and its child container separately
+                trie_node = current[seg]
+                current_node = trie_node
+                if trie_node.get("leaf"):
+                    current = trie_node
+                else:
+                    current = trie_node["children"]
+            if method:
+                if "methods" not in current_node:
+                    current_node["methods"] = {}
+                current_node["methods"][method] = data
 
-        # Build a lookup: full path (with method) -> data
-        entry_map: dict[str, dict[str, Any]] = {}
-        for route, method, data in parsed:
-            key = f"root/{route}:{method}" if method else f"root/{route}"
-            entry_map[key] = data
+        # Convert dict tree to list format
+        def _to_list(tree: dict, prefix: str) -> list[dict]:
+            result: list[dict] = []
+            for key in sorted(tree.keys()):
+                node = tree[key]
+                child_prefix = f"{prefix}/{key}"
+                if node["leaf"]:
+                    if node["methods"]:
+                        for method in sorted(node["methods"].keys()):
+                            data = node["methods"][method]
+                            result.append({
+                                "id": f"{child_prefix}:{method}".replace("/", "\\/"),
+                                "text": f"{key}:{method}",
+                                "leaf": True,
+                                "checked": False,
+                                "expanded": False,
+                                "iconCls": "dot-green",
+                                "data": data,
+                            })
+                    else:
+                        result.append({
+                            "id": child_prefix.replace("/", "\\/"),
+                            "text": key,
+                            "leaf": True,
+                            "checked": False,
+                            "expanded": False,
+                        })
+                else:
+                    child_list = _to_list(node["children"], child_prefix)
+                    result.append({
+                        "id": child_prefix.replace("/", "\\/"),
+                        "text": key,
+                        "leaf": False,
+                        "checked": False,
+                        "expanded": False,
+                        "children": child_list,
+                    })
+                    # Also show method leaves for this node
+                    if node.get("methods"):
+                        for method in sorted(node["methods"].keys()):
+                            data = node["methods"][method]
+                            child_list.append({
+                                "id": f"{child_prefix}:{method}".replace("/", "\\/"),
+                                "text": f"{key}:{method}",
+                                "leaf": True,
+                                "checked": False,
+                                "expanded": False,
+                                "iconCls": "dot-green",
+                                "data": data,
+                            })
+            return result
+
+        if node == "root" or node is None:
+            return _to_list(root, "root")
+
+        # Lazy load: find the node in the trie and return its children
+        target_path = node.rstrip("/")
+        parts = [s for s in target_path.split("/") if s]
+        current = root
+        for part in parts:
+            if part in current:
+                current = current[part]
+            else:
+                return []
+
+        if current.get("leaf"):
+            return []
+
+        children = _to_list(current.get("children", {}), target_path)
 
         # Parse sort param
-        sorters: list[dict[str, str]] = []
         if sort:
             try:
                 import json
                 sorters = json.loads(sort)
             except (json.JSONDecodeError, TypeError):
                 sorters = []
-
-        if sorters:
-            for s in reversed(sorters):
-                prop = s.get("property", "path")
-                direction = s.get("direction", "ASC")
-                reverse = direction == "DESC"
-                if prop == "path":
-                    parsed.sort(key=lambda x: x[0], reverse=reverse)
-        def _build_children(parent_path: str, depth: int, is_root: bool = False, db_prefix: str | None = None) -> list[dict]:
-            """Recursively build children for a given parent path."""
-            children_map: dict[str, list[tuple[str, str, dict]]] = {}
-
-            if is_root:
-                for route, method, data in parsed:
-                    if not route.strip("/"):
-                        continue
-                    top = route.strip("/").split("/")[0]
-                    children_map.setdefault(top, []).append((route, method, data))
-            elif db_prefix:
-                prefix = db_prefix.rstrip("/") + "/"
-                for route, method, data in parsed:
-                    route_cmp = route.lstrip("/")
-                    if not route_cmp.startswith(prefix.lstrip("/")):
-                        continue
-                    rest = route_cmp[len(prefix.lstrip("/")):]
-                    top = rest.split("/")[0] if rest else ""
-                    children_map.setdefault(top, []).append((route, method, data))
-            else:
-                prefix = parent_path.rstrip("/") + "/"
-                for route, method, data in parsed:
-                    route_cmp = route.lstrip("/")
-                    if not route_cmp.startswith(prefix.lstrip("/")):
-                        continue
-                    rest = route_cmp[len(prefix.lstrip("/")):]
-                    top = rest.split("/")[0] if rest else ""
-                    children_map.setdefault(top, []).append((route, method, data))
-
-            result: list[dict] = []
-            for top_name in sorted(children_map.keys()):
-                items = children_map[top_name]
-
-                # Determine if this node has children or is a leaf with method children
-                has_path_children = False
-                has_method_children = False
-                for route, method, data in items:
-                    rest = route.strip("/").split("/")
-                    if len(rest) > depth + 1:
-                        has_path_children = True
-                    if method:
-                        has_method_children = True
-
-                child_path = f"{parent_path}/{top_name}"
-                has_children = has_path_children or has_method_children
-
-                # Check for direct repo entry on this node
-                node_data: dict[str, Any] | None = None
-                if child_path in entry_map:
-                    node_data = entry_map[child_path]
-
-                node: dict[str, Any] = {
-                    "id": child_path.replace("/", "\\/"),
-                    "text": top_name,
-                    "leaf": not has_children,
-                    "checked": False,
-                    "expanded": False,
-                }
-
-                if node_data:
-                    node["iconCls"] = "dot-green"
-                    node["data"] = node_data
-
-                if has_children:
-                    # If has path children, recurse; otherwise show methods as children
-                    if has_path_children:
-                        node["children"] = _build_children(
-                            child_path, depth + 1,
-                            db_prefix=child_path[5:] if child_path.startswith("root/") else child_path,
-                        )
-                    else:
-                        # No more path children — append method to text/id
-                        method_groups: dict[str, dict] = {}
-                        for route, method, data in items:
-                            if method:
-                                method_groups.setdefault(method, data)
-                        leaf_prefix = "root/" + child_path[5:] if child_path.startswith("root/") else child_path
-                        if len(method_groups) == 1:
-                            method, method_data = next(iter(method_groups.items()))
-                            node["text"] = f"{top_name}:{method}"
-                            node["id"] = f"{leaf_prefix}:{method}".replace("/", "\\/")
-                            node["leaf"] = True
-                            node["iconCls"] = "dot-green"
-                            node["data"] = method_data
-                        else:
-                            # Multiple methods: create one leaf per method
-                            for method in sorted(method_groups.keys()):
-                                result.append({
-                                    "id": f"{leaf_prefix}:{method}".replace("/", "\\/"),
-                                    "text": f"{top_name}:{method}",
-                                    "leaf": True,
-                                    "checked": False,
-                                    "expanded": False,
-                                    "iconCls": "dot-green",
-                                    "data": method_groups[method],
-                                })
-
-                result.append(node)
-
-            return result
-
-        if node == "root" or node is None:
-            return _build_children("root", 0, is_root=True)
-
-        # Return children of a specific node (lazy load on expand)
-        target_path = node.rstrip("/")
-        if target_path.startswith("root/"):
-            db_prefix = target_path[5:]
-        else:
-            db_prefix = target_path
-        # depth == number of segments in the node's stored path prefix,
-        # which equals the slash count of "root/<prefix>".
-        depth = target_path.count("/")
-        children = _build_children(target_path, depth, db_prefix=db_prefix)
-
-        if sorters:
-            for s in reversed(sorters):
-                prop = s.get("property", "text")
-                direction = s.get("direction", "ASC")
-                reverse = direction == "DESC"
-                if prop == "text":
-                    children.sort(key=lambda c: c["text"], reverse=reverse)
+            if sorters:
+                for s in reversed(sorters):
+                    prop = s.get("property", "text")
+                    direction = s.get("direction", "ASC")
+                    reverse = direction == "DESC"
+                    if prop == "text":
+                        children.sort(key=lambda c: c["text"], reverse=reverse)
         return children

@@ -1,3 +1,6 @@
+from datetime import datetime
+
+import sqlalchemy as sa
 from sqlalchemy import ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -13,11 +16,12 @@ class PermissionGroup(Base):
 
     __tablename__ = "permission_groups"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    path: Mapped[str] = mapped_column(
-        String(255), nullable=False, index=True
-    )  # resource path (e.g. 'root/modules/bpm')
-    source: Mapped[str | None] = mapped_column(
-        String(64), nullable=True
-    )  # source of the permission entry (e.g. 'api', 'manual')
-    idgroup: Mapped[int] = mapped_column(Integer(), ForeignKey("groups.idgroup"))
+    __table_args__ = (
+        sa.PrimaryKeyConstraint("idgroup", "path"),
+    )
+
+    idgroup: Mapped[int] = mapped_column(Integer, ForeignKey("groups.idgroup"), primary_key=True)
+    path: Mapped[str] = mapped_column(String(255), primary_key=True, nullable=False, index=True)
+    source: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(sa.DateTime, nullable=False, server_default=sa.func.now())
+    updated_by: Mapped[int | None] = mapped_column(Integer, nullable=True)

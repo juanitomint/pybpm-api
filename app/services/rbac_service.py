@@ -5,9 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import sqlalchemy as sa
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.models.permission_group import PermissionGroup
 from app.models.permission_repository import PermissionRepository
 
@@ -83,32 +82,44 @@ class RbacService:
         await self.db.flush()
         return count
 
-    async def add_path_to_group(self, path: str, idgroup: int, source: str = "api") -> PermissionGroup:
-        """Add (upsert) a path-to-group mapping."""
+    async def add_path_to_group(
+        self, path: str, idgroup: int, source: str = "api", updated_by: int | None = None
+    ) -> PermissionGroup:
+        """Insert a path-to-group mapping.
+
+        Replaces the old upsert logic: each call now inserts a fresh row
+        so that updated_at/updated_by always reflect the latest change.
+        """
+        stmt = sa.insert(PermissionGroup).values(
+            idgroup=idgroup, path=path, source=source, updated_by=updated_by
+        )
+        await self.db.execute(stmt)
         result = await self.db.execute(
-            select(PermissionGroup).where(
+            sa.select(PermissionGroup).where(
                 PermissionGroup.idgroup == idgroup,
                 PermissionGroup.path == path,
             )
         )
-        entry = result.scalar_one_or_none()
-        if entry is None:
-            entry = PermissionGroup(idgroup=idgroup, path=path, source=source)
-            self.db.add(entry)
-        await self.db.flush()
-        return entry
+        return result.scalar_one()
 
-    async def set_group_paths(self, idgroup: int, paths: list[str], source: str = "api") -> list[str]:
-        """Clear existing paths, add new ones, return final list."""
+    async def set_group_paths(
+        self, idgroup: int, paths: list[str], source: str = "api", updated_by: int | None = None
+    ) -> list[str]:
+        """Replace all paths for the group.
+
+        Clears existing paths first, then inserts the new set.
+        """
         await self.clear_paths(idgroup)
         for path in paths:
-            await self.add_path_to_group(path, idgroup, source=source)
+            await self.add_path_to_group(path, idgroup, source=source, updated_by=updated_by)
+        await self.db.flush()
+        await self.db.commit()
         return await self.get_group_paths(idgroup)
 
     async def has_path(self, idgroup: int, path: str) -> bool:
         """Check if a group has access to a path."""
         result = await self.db.execute(
-            select(PermissionGroup.id).where(
+            select(PermissionGroup.idgroup).where(
                 PermissionGroup.idgroup == idgroup,
                 PermissionGroup.path == path,
             )

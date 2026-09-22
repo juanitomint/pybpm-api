@@ -81,7 +81,7 @@ docker-test: ## Test using docker image with .env variables
 	docker run -it --rm -v ${CURRENT_DIR}:/workspace --env-file .env --net=host ${IMAGE_REPOSITORY}:latest
 
 .PHONY: docker-shell
-docker-shell: ## Test using docker image with .env variables
+docker-shell: ## Test using docker image with .env variables and execute shell
 	docker run -it --rm -v ${CURRENT_DIR}:/workspace --env-file .env --net=host ${IMAGE_REPOSITORY}:latest bash
 
 ## Run engine test on a model (.venv/bin/python scripts/test_model.py <idwf>)

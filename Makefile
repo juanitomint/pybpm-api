@@ -2,6 +2,7 @@ IMAGE_REPOSITORY  ?= juanitomint/pybpm-api
 CURRENT_DIR = $(shell pwd)
 GIT_LAST_TAG=$(shell git tag --sort=committerdate|tail -n 1)
 GIT_COMMIT=$(shell git rev-parse --short HEAD)
+IMAGE_TAG ?= $(if $(GIT_LAST_TAG),$(GIT_LAST_TAG),$(GIT_COMMIT))
 help:
 	@grep -E '^[\/a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 .PHONY: deps
@@ -77,6 +78,10 @@ docker-push: ## Push docker image to remote ${IMAGE_REPOSITORY}
 
 .PHONY: docker-test
 docker-test: ## Test using docker image with .env variables
+	docker run -it --rm -v ${CURRENT_DIR}:/workspace --env-file .env --net=host ${IMAGE_REPOSITORY}:latest
+
+.PHONY: docker-shell
+docker-shell: ## Test using docker image with .env variables
 	docker run -it --rm -v ${CURRENT_DIR}:/workspace --env-file .env --net=host ${IMAGE_REPOSITORY}:latest bash
 
 ## Run engine test on a model (.venv/bin/python scripts/test_model.py <idwf>)

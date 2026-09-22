@@ -12,4 +12,4 @@ uv run alembic upgrade head
 
 # Start the application
 echo "Starting the application..."
-exec uv run uvicorn main:app --host 0.0.0.0 --port 5000 --reload --reload-dir /app
+exec uv run uvicorn main:app --host 0.0.0.0 --port ${APP_PORT:-5000} ${APP_EXTRA:""}

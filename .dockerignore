@@ -6,4 +6,12 @@ data/pgdata
 data/upload_data
 .tools
 tools/
-.MD
+Makefile
+*.md
+./*.db*
+tests
+utils
+*.log
+htmlcov
+data
+ruff.toml

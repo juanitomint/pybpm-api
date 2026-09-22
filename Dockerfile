@@ -2,6 +2,8 @@ FROM python:3.14-slim AS base
 
 ENV LOG_FORMATTER=json \
     DEBIAN_FRONTEND=noninteractive
+ENV APP_PORT=5000
+ENV APP_EXTRA=""
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
@@ -15,10 +17,10 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync
 
-FROM base AS runtime
+FROM deps AS runtime
 ENV PATH="/app/.venv/bin:$PATH"
 WORKDIR /app
 COPY --from=deps /app/.venv /.venv
 COPY . .
-EXPOSE 5000
+EXPOSE ${APP_PORT}
 CMD ["/app/boot.sh"]

@@ -66,7 +66,6 @@ async def run_intermediate_event_throwing(
 
     # Build search query: shapes with matching stencil ID and trigger/name match.
     catchers_by_trigger: list[dict] = []
-    catchers_by_name: list[dict] = []
     catchers_by_ref: list[dict] = []
 
     if catcher_stencil:
@@ -78,8 +77,11 @@ async def run_intermediate_event_throwing(
             s for s in result if s.get("resourceId") != shape.get("resourceId")
         ]
 
-    # Search by messageref.
-        result = await bpm_service.get_shapes_by_property(service.db, idwf, messageref=name)
+    # Search by messageref (only when we have a valid catcher stencil).
+    if catcher_stencil:
+        result = await bpm_service.get_shapes_by_property(
+            service.db, idwf, stencil_id=catcher_stencil, messageref=name
+        )
         catchers_by_ref = [
             s for s in result if s.get("resourceId") != shape.get("resourceId")
         ]
@@ -87,7 +89,7 @@ async def run_intermediate_event_throwing(
     # Merge all catchers, deduplicating by resourceId.
     seen_rids: set[str] = set()
     all_catchers: list[dict] = []
-    for catcher in catchers_by_trigger + catchers_by_name + catchers_by_ref:
+    for catcher in catchers_by_trigger + catchers_by_ref:
         rid = catcher.get("resourceId")
         if rid and rid not in seen_rids:
             seen_rids.add(rid)

@@ -233,7 +233,7 @@ async def get_token_status(
         )
 
     # Fetch all tokens for this case
-    stmt = select(Token).where(Token.case_id == idcase).order_by(Token.resource_id)
+    stmt = select(Token).where(Token.case_id == idcase, Token.idwf == idwf).order_by(Token.check_date)
 
     result = await db.execute(stmt)
     tokens = result.scalars().all()

@@ -23,6 +23,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.api.bpm.engine import ENGINE_HANDLER_REGISTRY
+from app.services import bpm_service
 
 logger = logging.getLogger(__name__)
 
@@ -70,24 +71,27 @@ async def run_intermediate_event_throwing(
 
     if catcher_stencil:
         # Search for shapes by name/trigger.
-        result = await service.get_shapes_by_property(
-            idwf, stencil_id=catcher_stencil, name=trigger
+        result = await bpm_service.get_shapes_by_property(
+            service.db, idwf, stencil_id=catcher_stencil, name=trigger
         )
         catchers_by_trigger = [
             s for s in result if s.get("resourceId") != shape.get("resourceId")
         ]
 
     # Search by messageref.
-    if name and "Message" in stencil_id:
-        result = await service.get_shapes_by_property(idwf, messageref=name)
+        result = await bpm_service.get_shapes_by_property(service.db, idwf, messageref=name)
         catchers_by_ref = [
             s for s in result if s.get("resourceId") != shape.get("resourceId")
         ]
 
-    # Merge all catchers.
-    all_catchers = list(
-        dict.fromkeys(catchers_by_trigger + catchers_by_name + catchers_by_ref)
-    )
+    # Merge all catchers, deduplicating by resourceId.
+    seen_rids: set[str] = set()
+    all_catchers: list[dict] = []
+    for catcher in catchers_by_trigger + catchers_by_name + catchers_by_ref:
+        rid = catcher.get("resourceId")
+        if rid and rid not in seen_rids:
+            seen_rids.add(rid)
+            all_catchers.append(catcher)
 
     # Advance this throwing shape.
     await service.movenext(shape["resourceId"], idwf, case_id)
@@ -189,17 +193,17 @@ async def run_intermediate_event_catching(
     has_finished_thrower = False
     throwers = []
     if thrower_stencil and name:
-        result = await service.get_shapes_by_property(
-            idwf, stencil_id=thrower_stencil, name=name
+        result = await bpm_service.get_shapes_by_property(
+            service.db, idwf, stencil_id=thrower_stencil, name=name
         )
         throwers = [s for s in result if s.get("resourceId") != shape.get("resourceId")]
 
     # Check all throwers are finished.
     if throwers:
-        has_finished_thrower = all(
+        has_finished_thrower = all([
             await service._check_token_finished(idwf, case_id, t["resourceId"])
             for t in throwers
-        )
+        ])
 
     # Handle boundary events specially.
     if is_boundary_event and inbound_shapes:
@@ -236,11 +240,11 @@ async def run_intermediate_event_catching(
 
     # For normal flow: check all inbound flows are finished.
     if is_normal_flow and inbound_shapes:
-        has_finished_flow = all(
+        has_finished_flow = all([
             await service._check_token_finished(idwf, case_id, s["resourceId"])
             for s in inbound_shapes
             if (s.get("stencil") or {}).get("id") in ("SequenceFlow", "MessageFlow")
-        )
+        ])
     else:
         has_finished_flow = True
 

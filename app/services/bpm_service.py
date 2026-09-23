@@ -182,3 +182,68 @@ async def load_start_shapes(db: AsyncSession, idwf: str) -> list[dict]:
 
     _walk(data)
     return starts
+
+
+async def get_shapes_by_property(
+    db: AsyncSession,
+    idwf: str,
+    stencil_id: str | None = None,
+    name: str | None = None,
+    messageref: str | None = None,
+    tasktype: str | None = None,
+) -> list[dict]:
+    """Find all shapes in a model matching the given criteria.
+
+    Mirrors the legacy ``Bpm::get_shapes_by_property()`` used by event
+    and call-activity handlers to locate matching shapes across the model.
+
+    Args:
+        db: AsyncSession for DB operations.
+        idwf: Model identifier.
+        stencil_id: Filter by stencil ID (e.g. 'StartNoneEvent').
+        name: Filter by shape name.
+        messageref: Filter by eventdefinitionref.
+        tasktype: Filter by tasktype property.
+
+    Returns:
+        List of matching shape dicts.
+    """
+    stmt = select(BpmModel.data).where(BpmModel.idwf == idwf)
+    result = await db.execute(stmt)
+    data = result.scalar_one_or_none()
+
+    if not data or "childShapes" not in data:
+        return []
+
+    results: list[dict] = []
+
+    def _walk(node: dict):
+        if not isinstance(node, dict):
+            return
+        matches = True
+        if stencil_id:
+            node_stencil = (node.get("stencil") or {}).get("id", "")
+            if node_stencil != stencil_id:
+                matches = False
+        if name and matches:
+            props = node.get("properties") or {}
+            if props.get("name") != name:
+                matches = False
+        if messageref and matches:
+            props = node.get("properties") or {}
+            if props.get("eventdefinitionref") != messageref:
+                matches = False
+        if tasktype and matches:
+            props = node.get("properties") or {}
+            if props.get("tasktype") != tasktype:
+                matches = False
+        if matches:
+            results.append(node)
+        for key in ("childShapes", "shapes"):
+            children = node.get(key, []) or []
+            if isinstance(children, list):
+                for child in children:
+                    _walk(child)
+
+    _walk(data)
+    return results

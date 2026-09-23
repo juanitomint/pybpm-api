@@ -20,6 +20,7 @@ import sqlalchemy as sa
 from app.api.bpm.engine import ENGINE_HANDLER_REGISTRY
 from app.handlers.eval_context import DataStorage, build_script_namespace
 from app.handlers.flow import _eval_script
+from app.services import bpm_service
 
 
 class TaskHandler:
@@ -71,9 +72,8 @@ class TaskHandler:
             callable_name = (props.get("callableelement") or "") or str(
                 props.get("name", "")
             )
-            task_type_str = str(props.get("tasktype", "") or "")
-            candidates = await service.get_shapes_by_property(
-                idwf, name=callable_name, tasktype=task_type_str
+            candidates = await bpm_service.get_shapes_by_property(
+                service.db, idwf, name=callable_name, tasktype=task_type_str
             )
             for candidate in candidates:
                 cand_props = candidate.get("properties") or {}

@@ -7,8 +7,8 @@ file is `app/api/bpm/engine.py`.
 Endpoints ported so far:
 - ``newcase``  -- create a new case instance and advance it to start shapes
 - ``start``    -- resume an existing case at its diagram's start points
-- ``run``      -- execute the engine loop for pending tokens
-- ``post/{token_id}`` -- external webhook callback
+- ``post/{idwf}/{idcase}/{resource_id}`` -- external webhook callback (path-based lookup)
+- ``post/{token_id}`` -- external webhook callback (legacy token-ID lookup)
 - ``assign``   -- assign task to one or more users
 
 These correspond to the legacy ``Engine::Newcase()``, ``Engine::Start()``,
@@ -37,6 +37,7 @@ from app.schemas.engine import (
     GateDecisionRequest,
     GateResponse,
     NewcaseRequest,
+    PostDataRequest,
     PostRequest,
     PostResponse,
     RunRequest,
@@ -347,16 +348,15 @@ async def run(
                     )
 
                 stencil_id = (shape.get("stencil") or {}).get("id", "")
-                handler_cls = (
-                    ENGINE_HANDLER_REGISTRY.get(stencil_id) or _DEFAULT_SHAPE_HANDLER
-                )
-                if isinstance(handler_cls, type):
+                handler_cls = ENGINE_HANDLER_REGISTRY.get(stencil_id)
+                if handler_cls:
                     instance = handler_cls()
                 else:
-                    instance = handler_cls
-                should_movenext = await instance.handle(token, shape, service)  # type: ignore[misc]
-                if should_movenext:
                     await service.movenext(token.resource_id, idwf, idcase)
+                    continue
+                if isinstance(instance, type):
+                    instance = instance()
+                await instance.handle(token, shape, service)  # type: ignore[misc]
                 # Check if handler requested a break (e.g. EndCancelEvent).
                 if getattr(service, "break_on_next", False):
                     service.break_on_next = False  # type: ignore[attr-defined]
@@ -377,7 +377,7 @@ async def run(
 @router.post("/post/{token_id}", response_model=PostResponse)
 async def post(
     token_id: int,
-    body: PostRequest,
+    body: PostRequest | None = None,
     user: User = Depends(get_current_user),
     service: EngineService = Depends(get_engine_service),
 ):
@@ -386,8 +386,10 @@ async def post(
     2. Saves external data on the case record under ``data['external'][origin][resourceId]``.
     3. Calls ``run_post()`` to load inbound DataObjects/connectors and advance the engine.
 
-    Returns 404 if no matching token is found (mirrors legacy ``show_error('Token not found',500)``).
     """
+    # Resolve request body (use defaults when caller sends nothing).
+    if body is None:
+        body = PostRequest()
     # Search for token by ID.
     stmt = select(Token).where(Token.resource_id == token_id)
     result = await service.db.execute(stmt)
@@ -411,10 +413,71 @@ async def post(
         await service.db.flush()
         await service.db.commit()
 
-    # Mark the token as done. The full run_post chain (load DataObjects, connectors, movenext)
-    # is deferred until connector logic is implemented — see ENGINE.md Phase 2.
+    # Advance the engine — mirrors legacy ``Engine::run_post()`` which calls
+    # ``$this->bpm->movenext()`` after persisting external data.
     if token.status != "finished":
         await service.mark_token_finished(token)
+    await service.movenext(token.resource_id, token.idwf, token.case_id)
+    # Run engine loop to completion — processes all reachable tokens.
+    await service.run_engine(token.idwf, token.case_id)
+
+    return PostResponse(ok=True, msg="POST processed successfully")
+
+# -- post_data (path-based lookup) ---------------------------------------------- #
+
+
+@router.post(
+    "/post/{idwf}/{idcase}/{resource_id}", response_model=PostResponse
+)
+async def post_data(
+    idwf: str,
+    idcase: str,
+    resource_id: str,
+    body: PostDataRequest | None = None,
+    user: User = Depends(get_current_user),
+    service: EngineService = Depends(get_engine_service),
+):
+    """
+    Path-based alternative to ``POST /post/{token_id}``.
+
+    1. Looks up the token by ``(idwf, case_id, resource_id)`` via
+       ``service.get_token()``.
+    2. Persists optional external data on the token's ``external_data`` JSONB column.
+    3. Marks the token as finished (full ``run_post`` chain deferred to Phase 2).
+
+    Returns 404 if no matching token is found.
+
+    The request body is optional — when omitted the endpoint persists no external
+    data (defaults to ``external_origin='unknown'``, ``external_id=None``).
+    """
+    # Resolve request body (use defaults when caller sends nothing).
+    if body is None:
+        body = PostDataRequest()
+
+    # Look up token by (idwf, case_id, resource_id).
+    token = await service.get_token(idwf, idcase, resource_id)
+
+    if token is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Token not found",
+        )
+
+    # Persist external data on the token's external_data JSONB column.
+    if body.data:
+        ext_data = token.external_data or {}
+        origin_bucket = ext_data.setdefault(body.external_origin, {})
+        origin_bucket[token.resource_id] = body.external_id
+
+        token.external_data = ext_data
+        await service.db.flush()
+        await service.db.commit()
+
+    # Advance the engine — mirrors legacy ``Engine::run_post()`` which calls
+    # ``$this->bpm->movenext()`` after persisting external data.
+    await service.movenext(token.resource_id, token.idwf, token.case_id)
+    # Run engine loop to completion — processes all reachable tokens.
+    await service.run_engine(token.idwf, token.case_id)
 
     return PostResponse(ok=True, msg="POST processed successfully")
 

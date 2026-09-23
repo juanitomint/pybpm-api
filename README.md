@@ -354,7 +354,8 @@ class ShapeHandler:
 | POST | `/api/v1/bpm/engine/newcase` | Create new case instance |
 | POST | `/api/v1/bpm/engine/start` | Start/resume case at start shapes |
 | POST | `/api/v1/bpm/engine/run/{idwf}/{idcase}` | Execute engine loop |
-| POST | `/api/v1/bpm/engine/post/{token_id}` | POST data to waiting task |
+| POST | `/api/v1/bpm/engine/post/{idwf}/{idcase}/{resource_id}` | POST data to waiting task (path-based lookup) |
+| POST | `/api/v1/bpm/engine/post/{token_id}` | POST data to waiting task (legacy token-ID lookup) |
 | POST | `/api/v1/bpm/engine/assign` | Assign task to users |
 | POST | `/api/v1/bpm/engine/gate_decision` | Manual gateway decision |
 | POST | `/api/v1/bpm/engine/task_complete` | Complete manual task |

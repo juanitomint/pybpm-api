@@ -149,22 +149,23 @@ When using `APP_PORT=5001`, point clients (editor, UI, scripts) at `http://local
 
 ### ⚠️ Never Kill Running Servers
 
-**The dev server uses `--reload` and restarts on every file change. NEVER kill it.**
+**The dev server on port 5000 uses `--reload` and restarts on every file change. NEVER kill it.**
+
+**NEVER run `pkill -f "uvicorn main:app"` or `pkill -f "uvicorn.*5000"` — this will kill your dev server.**
 
 When you need a separate server instance for testing, scripting, or tooling, always use a **different port** (5001 or higher):
 
 ```bash
-# ✅ CORRECT — test on port 5001, dev server stays alive:
+# ✅ CORRECT — test on port 5001, dev server stays alive on 5000:
 APP_PORT=5001 uv run uvicorn main:app --host 0.0.0.0 --port 5001
 
-# ❌ WRONG — kills your dev server:
-pkill -f "uvicorn main:app"   # NEVER do this
-fuser -k 5000/tcp             # NEVER do this
-```
+# ✅ CORRECT — kill only port 5001 servers, never port 5000:
+pkill -f "uvicorn.*5001"
 
-If you need to stop a test server, kill it by PID or port explicitly:
-```bash
-pkill -f "uvicorn.*5001"      # Only kill port 5001, never port 5000
+# ❌ WRONG — kills your dev server on port 5000:
+pkill -f "uvicorn main:app"      # NEVER do this
+pkill -f "uvicorn.*5000"         # NEVER do this
+fuser -k 5000/tcp                # NEVER do this
 ```
 
 ### Linting & Formatting

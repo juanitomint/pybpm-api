@@ -496,6 +496,7 @@ class EngineService:
         _walk(data)
         return previous
 
+
     # -- movenext ------------------------------------------------------------ #
 
     async def movenext(self, resource_id: str, idwf: str, case_id: str) -> None:
@@ -545,6 +546,72 @@ class EngineService:
                     type_=out_stencil,
                     status="pending",
                 )
+
+    # -- Engine loop --------------------------------------------------------- #
+
+    async def run_engine(
+        self,
+        idwf: str,
+        idcase: str,
+        max_iterations: int = 100,
+    ) -> None:
+        """Execute the engine loop for a case instance.
+
+        Fetches pending/waiting tokens, dispatches each to its registered
+        shape handler (or falls back to movenext), and repeats until no more
+        work remains or the iteration cap is hit.
+
+        Mirrors legacy ``Engine::Run($model, $idwf, $case)`` (L183-301).
+        """
+        # Validate model exists
+        stmt = select(BpmModel).where(BpmModel.idwf == idwf)
+        result = await self.db.execute(stmt)
+        model_row = result.scalar_one_or_none()
+        if model_row is None:
+            return
+
+        pending_statuses = ["pending", "waiting"]
+        iteration = 0
+        filter_statuses: list[str] = pending_statuses.copy()
+
+        while iteration < max_iterations:
+            iteration += 1
+
+            # Fetch tokens matching current status filter.
+            tokens = await self.get_pending_tokens(idwf, idcase, filter_statuses)
+            if not tokens:
+                break
+
+            # Legacy line 278: after first pass, only look at 'pending' (not 'waiting').
+            filter_statuses = ["pending"]
+
+            for token in tokens:
+                shape = await self.get_shape(token.resource_id, idwf)
+                if not shape:
+                    continue
+
+                stencil_id = (shape.get("stencil") or {}).get("id", "")
+                handler_cls = self._get_handler(stencil_id)
+                if handler_cls:
+                    instance = handler_cls()
+                else:
+                    await self.movenext(token.resource_id, idwf, idcase)
+                    continue
+                if isinstance(instance, type):
+                    instance = instance()
+                await instance.handle(token, shape, self)
+
+        await self.db.flush()
+        await self.db.commit()
+
+    def _get_handler(self, stencil_id: str) -> type | None:
+        """Look up a registered handler for a stencil ID.
+
+        Imported lazily to avoid circular imports.
+        """
+        from app.api.bpm.engine import ENGINE_HANDLER_REGISTRY
+
+        return ENGINE_HANDLER_REGISTRY.get(stencil_id)
 
     # -- Utility methods ----------------------------------------------------- #
 

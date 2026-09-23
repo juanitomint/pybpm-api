@@ -107,7 +107,7 @@ class PostRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     external_origin: str = Field(
-        ...,
+        default="unknown",
         description="Origin label for the external data bucket (e.g., 'inbox', 'webhook').",
     )
     external_id: str | None = Field(
@@ -126,6 +126,30 @@ class PostResponse(BaseModel):
     ok: bool = True
     msg: str = "POST processed successfully"
 
+
+class PostDataRequest(BaseModel):
+    """POST /api/v1/bpm/engine/post/{idwf}/{idcase}/{resource_id} — external webhook callback with path-based token lookup.
+
+    Body is optional: when omitted the endpoint persists no external data
+    (defaults to ``external_origin='unknown'``, ``external_id=None``).
+    When provided the payload is stored under ``case.data['external'][origin][resourceId]``
+    so downstream handlers can read it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    external_origin: str = Field(
+        default="unknown",
+        description="Origin label for the external data bucket (e.g., 'inbox', 'webhook').",
+    )
+    external_id: str | None = Field(
+        default=None,
+        description="Identifier of the external resource (message ID, webhook reference).",
+    )
+    data: dict[str, Any] | None = Field(
+        default=None,
+        description="Optional payload merged into case.data under data[external_origin][resourceId].",
+    )
 
 # -- Assign Request/Response ------------------------------------------------------ #
 
@@ -220,3 +244,19 @@ class TaskCompleteResponse(BaseModel):
 
     ok: bool = True
     msg: str = "Task completed successfully"
+
+
+# -- Forward-reference resolution (from __future__ import annotations) ---------- #
+
+
+for _model in (
+    NewcaseRequest,
+    StartRequest,
+    RunRequest,
+    PostRequest,
+    PostDataRequest,
+    AssignRequest,
+    GateDecisionRequest,
+    TaskCompleteRequest,
+):
+    _model.model_rebuild()

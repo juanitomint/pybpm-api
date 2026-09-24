@@ -496,7 +496,6 @@ class EngineService:
         _walk(data)
         return previous
 
-
     # -- movenext ------------------------------------------------------------ #
 
     async def movenext(self, resource_id: str, idwf: str, case_id: str) -> None:

@@ -16,9 +16,8 @@ class PermissionRepository(Base):
 
     __tablename__ = "permission_repository"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     path: Mapped[str] = mapped_column(
-        String(255), nullable=False, index=True
+        String(255), primary_key=True, nullable=False
     )  # resource path
     source: Mapped[str | None] = mapped_column(
         String(64)

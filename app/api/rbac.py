@@ -7,15 +7,19 @@ import json
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
 from fastapi.responses import Response
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.auth import get_current_user
 from app.models.user import User
 from app.services.rbac_service import RbacService
 from extensions import get_async_db
 
+
 class SaveGroupPathsBody(BaseModel):
     idgroup: int
     paths: list[str]
     source: str = "api"
+
 
 router = APIRouter(prefix="/rbac", tags=["rbac"])
 
@@ -31,6 +35,8 @@ async def get_repository(
     tree = await svc.get_tree(node=node, sort=sort)
     json_str = json.dumps(tree, separators=(",", ":"))
     return Response(content=json_str, media_type="application/json")
+
+
 @router.post("/repository")
 @router.post("/repository/root")
 async def read_repository(
@@ -44,6 +50,7 @@ async def read_repository(
     json_str = json.dumps({"data": tree}, separators=(",", ":"))
     return Response(content=json_str, media_type="application/json")
 
+
 @router.put("/repository/")
 @router.put("/repository/root")
 async def save_repository(
@@ -54,7 +61,7 @@ async def save_repository(
     current_user: User = Depends(get_current_user),
 ):
     svc = RbacService(db)
-    final = await svc.set_group_paths(idgroup, paths, source=source)
+    await svc.set_group_paths(idgroup, paths, source=source)
 
 
 @router.delete("/repository")
@@ -103,7 +110,7 @@ async def save_group_paths(
         form_data = await request.form()
         # Build body from FormData, handling repeated keys (e.g. multiple "paths" params)
         body_dict = {}
-        for key in form_data.keys():
+        for key in form_data:
             values = form_data.getlist(key)
             body_dict[key] = values if len(values) > 1 else values[0]
         # Normalize single-string paths to list
@@ -116,10 +123,12 @@ async def save_group_paths(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Invalid request body: {exc}",
-        )
+        ) from exc
 
     svc = RbacService(db)
-    final = await svc.set_group_paths(body.idgroup, body.paths, source=body.source, updated_by=current_user.idu)
+    final = await svc.set_group_paths(
+        body.idgroup, body.paths, source=body.source, updated_by=current_user.idu
+    )
     return {"paths": final}
 
 
@@ -147,4 +156,6 @@ class RbacDependency:
         if self.required_path and await user.has_path(db, self.required_path):
             return user
 
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Access denied"
+        )

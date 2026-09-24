@@ -14,9 +14,9 @@ dependencies = [
    "asyncpg>=0.29.0",            # Fast, async PostgreSQL driver (Change to aiomysql if using MySQL)
    "passlib[bcrypt]>=1.7.4",     # Secure password hashing for user/auth tasks
    "python-jose[cryptography]>=3.3.0", # JWT generation and validation
-   "python-multipart>=0.0.32",
    "aiosqlite>=0.22.1",
    "psycopg2-binary>=2.9.12",
+   "python-multipart>=0.0.32",
 ]
 
 [dependency-groups]

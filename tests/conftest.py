@@ -28,6 +28,7 @@ sys.path.insert(0, str(project_root))
 # Module-level state for tests that need direct access to the test DB factory.
 _state: type = type("_state", (), {"_factory": None})  # type: ignore[attr-defined]
 
+
 @pytest.fixture(scope="function", autouse=True)
 async def setup_test_db():
     """Create tables in an in-memory SQLite for each test function.

@@ -423,12 +423,11 @@ async def post(
 
     return PostResponse(ok=True, msg="POST processed successfully")
 
+
 # -- post_data (path-based lookup) ---------------------------------------------- #
 
 
-@router.post(
-    "/post/{idwf}/{idcase}/{resource_id}", response_model=PostResponse
-)
+@router.post("/post/{idwf}/{idcase}/{resource_id}", response_model=PostResponse)
 async def post_data(
     idwf: str,
     idcase: str,

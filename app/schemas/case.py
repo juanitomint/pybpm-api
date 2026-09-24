@@ -119,3 +119,9 @@ class DeleteCaseResponse(BaseModel):
     ok: bool = True
     msg: str = "Case deleted successfully"
     idcase: str | None = None
+
+
+class RevertCaseResponse(BaseModel):
+    """POST /cases/revert/model/{idwf}/{idcase}/{resource_id} — response after reverting."""
+
+    status: str = "ok"

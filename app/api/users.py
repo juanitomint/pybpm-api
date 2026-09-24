@@ -43,7 +43,9 @@ async def get_user(
     svc = UserService(db)
     user = await svc.get_user(idu)
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
     return user
 
 
@@ -65,7 +67,9 @@ async def update_user(
     svc = UserService(db)
     user = await svc.update_user(idu, data)
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
     return user
 
 
@@ -76,5 +80,7 @@ async def delete_user(
 ):
     svc = UserService(db)
     if not await svc.delete_user(idu):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
     return None

@@ -275,9 +275,9 @@ class ShapeHandler:
 
     async def handle(
         self,
-        token: Token,          # Current token being processed
-        shape: dict,           # Shape data from model JSON
-        service: EngineService, # DB access + engine utilities
+        token: Token,  # Current token being processed
+        shape: dict,  # Shape data from model JSON
+        service: EngineService,  # DB access + engine utilities
     ) -> bool:
         """
         Returns True if the handler consumed the token (no movenext needed).

@@ -16,12 +16,16 @@ class PermissionGroup(Base):
 
     __tablename__ = "permission_groups"
 
-    __table_args__ = (
-        sa.PrimaryKeyConstraint("idgroup", "path"),
-    )
+    __table_args__ = (sa.PrimaryKeyConstraint("idgroup", "path"),)
 
-    idgroup: Mapped[int] = mapped_column(Integer, ForeignKey("groups.idgroup"), primary_key=True)
-    path: Mapped[str] = mapped_column(String(255), primary_key=True, nullable=False, index=True)
+    idgroup: Mapped[int] = mapped_column(
+        Integer, ForeignKey("groups.idgroup"), primary_key=True
+    )
+    path: Mapped[str] = mapped_column(
+        String(255), primary_key=True, nullable=False, index=True
+    )
     source: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(sa.DateTime, nullable=False, server_default=sa.func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime, nullable=False, server_default=sa.func.now()
+    )
     updated_by: Mapped[int | None] = mapped_column(Integer, nullable=True)

@@ -202,10 +202,12 @@ async def run_intermediate_event_catching(
 
     # Check all throwers are finished.
     if throwers:
-        has_finished_thrower = all([
-            await service._check_token_finished(idwf, case_id, t["resourceId"])
-            for t in throwers
-        ])
+        has_finished_thrower = all(
+            [
+                await service._check_token_finished(idwf, case_id, t["resourceId"])
+                for t in throwers
+            ]
+        )
 
     # Handle boundary events specially.
     if is_boundary_event and inbound_shapes:
@@ -242,11 +244,13 @@ async def run_intermediate_event_catching(
 
     # For normal flow: check all inbound flows are finished.
     if is_normal_flow and inbound_shapes:
-        has_finished_flow = all([
-            await service._check_token_finished(idwf, case_id, s["resourceId"])
-            for s in inbound_shapes
-            if (s.get("stencil") or {}).get("id") in ("SequenceFlow", "MessageFlow")
-        ])
+        has_finished_flow = all(
+            [
+                await service._check_token_finished(idwf, case_id, s["resourceId"])
+                for s in inbound_shapes
+                if (s.get("stencil") or {}).get("id") in ("SequenceFlow", "MessageFlow")
+            ]
+        )
     else:
         has_finished_flow = True
 

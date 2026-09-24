@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.permission_group import PermissionGroup
 from app.models.permission_repository import PermissionRepository
 
@@ -24,7 +25,9 @@ class RbacService:
         result = await self.db.execute(select(PermissionRepository))
         return list(result.scalars().all())
 
-    async def put_path(self, path: str, properties: dict, idu: int | None = None) -> PermissionRepository:
+    async def put_path(
+        self, path: str, properties: dict, idu: int | None = None
+    ) -> PermissionRepository:
         """Upsert a path into permission_repository.
 
         Args:
@@ -83,7 +86,11 @@ class RbacService:
         return count
 
     async def add_path_to_group(
-        self, path: str, idgroup: int, source: str = "api", updated_by: int | None = None
+        self,
+        path: str,
+        idgroup: int,
+        source: str = "api",
+        updated_by: int | None = None,
     ) -> PermissionGroup:
         """Insert a path-to-group mapping.
 
@@ -103,7 +110,11 @@ class RbacService:
         return result.scalar_one()
 
     async def set_group_paths(
-        self, idgroup: int, paths: list[str], source: str = "api", updated_by: int | None = None
+        self,
+        idgroup: int,
+        paths: list[str],
+        source: str = "api",
+        updated_by: int | None = None,
     ) -> list[str]:
         """Replace all paths for the group.
 
@@ -111,7 +122,9 @@ class RbacService:
         """
         await self.clear_paths(idgroup)
         for path in paths:
-            await self.add_path_to_group(path, idgroup, source=source, updated_by=updated_by)
+            await self.add_path_to_group(
+                path, idgroup, source=source, updated_by=updated_by
+            )
         await self.db.flush()
         await self.db.commit()
         return await self.get_group_paths(idgroup)
@@ -145,14 +158,16 @@ class RbacService:
             colon_idx = raw.rfind(":")
             if colon_idx >= 0:
                 route = raw[:colon_idx]
-                method = raw[colon_idx + 1:]
+                method = raw[colon_idx + 1 :]
             else:
                 route = raw
                 method = ""
 
             data = {
                 "source": e.source,
-                "checkdate": e.check_date.strftime("%Y-%m-%d %H:%M:%S") if e.check_date else None,
+                "checkdate": e.check_date.strftime("%Y-%m-%d %H:%M:%S")
+                if e.check_date
+                else None,
                 "idu": e.idu,
             }
 
@@ -160,7 +175,7 @@ class RbacService:
             current = root
             current_node = None
             for i, seg in enumerate(segments):
-                is_last = (i == len(segments) - 1)
+                is_last = i == len(segments) - 1
                 if seg not in current:
                     if is_last:
                         current[seg] = {
@@ -186,10 +201,7 @@ class RbacService:
                 # Navigate: track the node and its child container separately
                 trie_node = current[seg]
                 current_node = trie_node
-                if trie_node.get("leaf"):
-                    current = trie_node
-                else:
-                    current = trie_node["children"]
+                current = trie_node if trie_node.get("leaf") else trie_node["children"]
             if method:
                 if "methods" not in current_node:
                     current_node["methods"] = {}
@@ -205,46 +217,58 @@ class RbacService:
                     if node["methods"]:
                         for method in sorted(node["methods"].keys()):
                             data = node["methods"][method]
-                            result.append({
-                                "id": f"{child_prefix}:{method}".replace("/", "\\/"),
-                                "text": f"{key}:{method}",
+                            result.append(
+                                {
+                                    "id": f"{child_prefix}:{method}".replace(
+                                        "/", "\\/"
+                                    ),
+                                    "text": f"{key}:{method}",
+                                    "leaf": True,
+                                    "checked": False,
+                                    "expanded": False,
+                                    "iconCls": "dot-green",
+                                    "data": data,
+                                }
+                            )
+                    else:
+                        result.append(
+                            {
+                                "id": child_prefix.replace("/", "\\/"),
+                                "text": key,
                                 "leaf": True,
                                 "checked": False,
                                 "expanded": False,
-                                "iconCls": "dot-green",
-                                "data": data,
-                            })
-                    else:
-                        result.append({
-                            "id": child_prefix.replace("/", "\\/"),
-                            "text": key,
-                            "leaf": True,
-                            "checked": False,
-                            "expanded": False,
-                        })
+                            }
+                        )
                 else:
                     child_list = _to_list(node["children"], child_prefix)
-                    result.append({
-                        "id": child_prefix.replace("/", "\\/"),
-                        "text": key,
-                        "leaf": False,
-                        "checked": False,
-                        "expanded": False,
-                        "children": child_list,
-                    })
+                    result.append(
+                        {
+                            "id": child_prefix.replace("/", "\\/"),
+                            "text": key,
+                            "leaf": False,
+                            "checked": False,
+                            "expanded": False,
+                            "children": child_list,
+                        }
+                    )
                     # Also show method leaves for this node
                     if node.get("methods"):
                         for method in sorted(node["methods"].keys()):
                             data = node["methods"][method]
-                            child_list.append({
-                                "id": f"{child_prefix}:{method}".replace("/", "\\/"),
-                                "text": f"{key}:{method}",
-                                "leaf": True,
-                                "checked": False,
-                                "expanded": False,
-                                "iconCls": "dot-green",
-                                "data": data,
-                            })
+                            child_list.append(
+                                {
+                                    "id": f"{child_prefix}:{method}".replace(
+                                        "/", "\\/"
+                                    ),
+                                    "text": f"{key}:{method}",
+                                    "leaf": True,
+                                    "checked": False,
+                                    "expanded": False,
+                                    "iconCls": "dot-green",
+                                    "data": data,
+                                }
+                            )
             return result
 
         if node == "root" or node is None:
@@ -269,6 +293,7 @@ class RbacService:
         if sort:
             try:
                 import json
+
                 sorters = json.loads(sort)
             except (json.JSONDecodeError, TypeError):
                 sorters = []

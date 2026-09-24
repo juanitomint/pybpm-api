@@ -35,7 +35,10 @@ async def list_groups(
         limit=limit,
         sort=sort,
     )
-    return {"rows": [GroupRead.model_validate(g).model_dump() for g in groups], "totalCount": total}
+    return {
+        "rows": [GroupRead.model_validate(g).model_dump() for g in groups],
+        "totalCount": total,
+    }
 
 
 @router.get("/count")
@@ -56,7 +59,9 @@ async def get_group(
     svc = GroupService(db)
     group = await svc.get_group(idgroup)
     if not group:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Group not found"
+        )
     return group
 
 
@@ -78,7 +83,9 @@ async def update_group(
     svc = GroupService(db)
     group = await svc.update_group(idgroup, data)
     if not group:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Group not found"
+        )
     return group
 
 
@@ -89,5 +96,7 @@ async def delete_group(
 ):
     svc = GroupService(db)
     if not await svc.delete_group(idgroup):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Group not found"
+        )
     return None

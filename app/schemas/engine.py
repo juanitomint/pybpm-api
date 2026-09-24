@@ -151,6 +151,7 @@ class PostDataRequest(BaseModel):
         description="Optional payload merged into case.data under data[external_origin][resourceId].",
     )
 
+
 # -- Assign Request/Response ------------------------------------------------------ #
 
 

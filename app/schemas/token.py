@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
-
-# -- Request Schemas ----------------------------------------------------------- #
 
 
 class TokenCreate(BaseModel):
@@ -81,6 +80,7 @@ class TokenResponse(BaseModel):
     locked_by: int | None = Field(default=None)
     tasktype: str | None = Field(default=None)
     updated_at: datetime = Field(alias="updatedAt")
+    idtoken: UUID
 
 
 class TokenListResponse(BaseModel):
@@ -148,3 +148,33 @@ class TokenStatusSummary(BaseModel):
     waiting_count: int = 0
     finished_count: int = 0
     total_count: int = 0
+
+
+class TokenStatusRow(BaseModel):
+    """Single token row in the status response."""
+
+    idtoken: str
+    iduser: int
+    status: str
+    idwf: str
+    case: str
+    resource_id: str = Field(alias="resourceId")
+    type: str
+    run: int
+    checkdate: str
+    microtime: float
+    interval: dict[str, Any]
+    locked_by: str | None = Field(default=None, alias="lockedBy")
+    user: str
+    date: str
+    icon: str
+    title: str
+
+
+class TokenStatusResponse(BaseModel):
+    """Response schema for token status (legacy Engine::get_case_tokens)."""
+
+    total_count: int = Field(alias="totalCount")
+    rows: list[TokenStatusRow]
+
+

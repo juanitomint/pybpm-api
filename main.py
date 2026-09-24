@@ -89,7 +89,9 @@ async def lifespan(app: FastAPI):
                     registered += 1
         await db.commit()
         if registered:
-            logging.info("[startup] Registered %d routes in permission_repository", registered)
+            logging.info(
+                "[startup] Registered %d routes in permission_repository", registered
+            )
     yield
     # Shutdown: no-op
 

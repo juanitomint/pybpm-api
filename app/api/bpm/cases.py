@@ -30,9 +30,11 @@ from app.schemas.case import (
     DeleteCaseResponse,
     FreezCaseRequest,
     FreezCaseResponse,
+    RevertCaseResponse,
     UpdateCaseRequest,
     UpdateCaseResponse,
 )
+from app.schemas.token import TokenStatusResponse
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +202,7 @@ async def read_cases(
     }
 
 
-@router.get("/tokens/status/{idwf}/{idcase}", status_code=status.HTTP_200_OK)
+@router.get("/tokens/status/{idwf}/{idcase}", response_model=TokenStatusResponse, status_code=status.HTTP_200_OK)
 async def get_token_status(
     idwf: str,
     idcase: str,
@@ -233,7 +235,11 @@ async def get_token_status(
         )
 
     # Fetch all tokens for this case
-    stmt = select(Token).where(Token.case_id == idcase, Token.idwf == idwf).order_by(Token.check_date)
+    stmt = (
+        select(Token)
+        .where(Token.case_id == idcase, Token.idwf == idwf)
+        .order_by(Token.check_date)
+    )
 
     result = await db.execute(stmt)
     tokens = result.scalars().all()
@@ -328,6 +334,7 @@ async def get_token_status(
 
         rows.append(
             {
+                "idtoken": str(token.idtoken),
                 "iduser": id_user,
                 "status": token.status,
                 "idwf": token.idwf,
@@ -620,4 +627,83 @@ async def search_cases(
             )
         )
 
-    return case_responses
+
+@router.post(
+    "/revert/model/{idwf}/{idcase}/{resource_id}",
+    response_model=RevertCaseResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def revert_model(
+    idwf: str,
+    idcase: str,
+    resource_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Revert a case to a specific token state.
+
+    Ported from legacy Case_manager::revert(). Rewinds execution to the
+    specified resource (node) by:
+
+    1. Deleting all tokens created after the target token.
+    2. Setting the target token's status to ``pending`` (or ``user`` if
+       its ``tasktype`` is ``User``).
+    3. Setting the case status back to ``open``.
+
+    Args:
+        idwf: Workflow/model identifier.
+        idcase: Case instance identifier.
+        resource_id: The BPMN node resource ID to rewind to.
+
+    Returns:
+        {\"status\": \"ok\"} on success.
+
+    Raises:
+        HTTPException: 404 if case or target token not found.
+    """
+    # Validate case exists
+    stmt = select(BpmCase).where(BpmCase.idcase == idcase, BpmCase.idwf == idwf)
+    result = await db.execute(stmt)
+    case: BpmCase | None = result.scalar_one_or_none()
+
+    if case is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Case '{idcase}' does not exist in workflow '{idwf}'",
+        )
+
+    # Find target token by resource_id
+    stmt = select(Token).where(
+        Token.case_id == idcase,
+        Token.idwf == idwf,
+        Token.resource_id == resource_id,
+    )
+    result = await db.execute(stmt)
+    target_token: Token | None = result.scalar_one_or_none()
+
+    if target_token is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Token with resource_id '{resource_id}' not found in case '{idcase}'",
+        )
+
+    # Delete all tokens created after the target token (legacy: $gt filter)
+    await db.execute(
+        sa_delete(Token).where(
+            Token.case_id == idcase,
+            Token.idwf == idwf,
+            Token.idtoken > target_token.idtoken,
+        )
+    )
+
+    # Set target token status: 'pending' default, 'user' if tasktype is 'User'
+    new_status = "pending"
+    if target_token.tasktype == "User":
+        new_status = "user"
+    target_token.status = new_status
+
+    # Set case status back to open
+    case.status = "open"
+
+    await db.commit()
+
+    return RevertCaseResponse(status="ok")

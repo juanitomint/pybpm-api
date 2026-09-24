@@ -215,7 +215,7 @@ async def create_token(
 async def update_token(
     idwf: str,
     idcase: str,
-    idtoken: int,
+    idtoken: str,
     request: TokenUpdate,
     db: AsyncSession = Depends(get_db),
 ):
@@ -291,7 +291,7 @@ async def update_token(
 async def delete_token(
     idwf: str,
     idcase: str,
-    idtoken: int,
+    idtoken: str,
     db: AsyncSession = Depends(get_db),
 ):
     """Delete an individual token.
@@ -359,7 +359,7 @@ async def delete_token(
 async def assign_token(
     idwf: str,
     idcase: str,
-    idtoken: int,
+    idtoken: str,
     request: TokenAssignRequest,
     db: AsyncSession = Depends(get_db),
 ):

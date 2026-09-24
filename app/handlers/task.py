@@ -56,6 +56,7 @@ class TaskHandler:
         looptype = getattr(props.get("looptype"), "value", None) or (
             props.get("looptype") if isinstance(props.get("looptype"), str) else ""
         )
+        task_type_str = props.get("tasktype") or ""
         if looptype not in ("Standard", "None"):
             # Ensure task_run tracking exists on the service for this case.
             if not hasattr(service, "task_run"):

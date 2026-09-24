@@ -1,15 +1,17 @@
 """Integration tests for RBAC paths endpoint (PUT /rbac/paths)."""
 
+import uuid
+from pathlib import Path
+
+import bcrypt
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
 from app.models.base import Base as _ModelBase
 from app.models.group import Group
 from app.models.user import User
 from extensions import get_async_db
-import bcrypt
-import uuid
-from pathlib import Path
 
 project_root = Path(__file__).parent.parent
 
@@ -37,11 +39,15 @@ async def setup_test_db():
         seed_session.add(admin)
 
         # Seed admin group (idgroup=1)
-        admin_group = Group(idgroup=1, name="DNA² Admin", desc="System Administrators Group")
+        admin_group = Group(
+            idgroup=1, name="DNA² Admin", desc="System Administrators Group"
+        )
         seed_session.add(admin_group)
 
         # Seed default user group (idgroup=1000)
-        user_group = Group(idgroup=1000, name="DNA² Users", desc="Group for Regular users")
+        user_group = Group(
+            idgroup=1000, name="DNA² Users", desc="Group for Regular users"
+        )
         seed_session.add(user_group)
 
         await seed_session.commit()

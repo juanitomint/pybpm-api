@@ -108,7 +108,9 @@ async def test_run_no_model(client, auth_headers):
 
 
 @pytest.mark.asyncio
-async def test_run_with_pending_tokens(client, auth_headers, seeded_model, seeded_token):
+async def test_run_with_pending_tokens(
+    client, auth_headers, seeded_model, seeded_token
+):
     """POST /run/{idwf}/{idcase} with pending tokens executes the engine loop."""
     response = await client.post(
         "/bpm/engine/run/w1/c1",
@@ -202,6 +204,8 @@ async def seeded_parallel_model(setup_test_db):
         s.add(model)
         await s.commit()
     return model
+
+
 @pytest.mark.asyncio
 async def test_post_triggers_full_engine_loop(
     client, auth_headers, seeded_parallel_model, setup_test_db

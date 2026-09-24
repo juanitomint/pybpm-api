@@ -16,7 +16,7 @@ graph TB
 
     subgraph API["pybpm-api FastAPI (Port 5000)"]
         MW[Middleware<br/>CORS / NoCache]
-        R[Router<br/>/auth / /bpm / /dashboard<br/>/inbox / /schedule]
+        R[Router<br/>/auth / /bpm / /dashboard<br/>/inbox / /events<br/>/users / /groups<br/>/rbac / /admin]
         
         subgraph Services["Service Layer"]
             ES[EngineService]
@@ -86,7 +86,7 @@ stateDiagram-v2
 | Server | uvicorn |
 | Database | PostgreSQL (production), SQLite (dev) |
 | Testing | pytest, pytest-asyncio, httpx, pytest-xdist |
-| Linting | Ruff, Black |
+| Linting | Ruff |
 
 ## Project Structure
 
@@ -103,17 +103,22 @@ pybpm-api/
 ├── app/
 │   ├── __init__.py
 │   ├── api/
-│   │   ├── auth.py          # POST /auth/token, GET /auth/me
+│   │   ├── __init__.py
+│   │   ├── admin.py        # GET /admin/health
+│   │   ├── auth.py         # POST /api/v1/auth/token, GET /api/v1/auth/me
 │   │   ├── bpm/
+│   │   │   ├── __init__.py
+│   │   │   ├── repository.py  # Model CRUD (prefix: /bpm/repository)
 │   │   │   ├── engine.py    # Case lifecycle: newcase, start, run, post, assign
-│   │   │   ├── repository.py # Model CRUD: save, load, dump, delete, import, svg
-│   │   │   ├── cases.py     # Case management endpoints
-│   │   │   ├── tokens.py    # Token management
-│   │   │   ├── token_manager.py
-│   │   │   └── event_schedule.py
-│   │   ├── dashboard.py     # Case/task counts, task lifecycle (lock/unlock/validate/done)
-│   │   ├── inbox.py         # Inbox message filtering, CRUD
-│   │   └── engine.py        # Engine API router (prefix: /bpm/engine)
+│   │   │   ├── cases.py     # Case manager endpoints (prefix: /bpm/case_manager)
+│   │   │   ├── tokens.py    # Token manager endpoints (prefix: /bpm/token_manager)
+│   │   │   └── event_schedule.py  # Scheduled events (prefix: /events/schedules)
+│   │   ├── dashboard.py    # Case/task counts, task lifecycle (lock/unlock/validate/done)
+│   │   ├── inbox.py        # Inbox message filtering, CRUD
+│   │   ├── groups.py       # Group CRUD (prefix: /groups)
+│   │   ├── users.py        # User CRUD (prefix: /users)
+│   │   ├── profile.py      # User profile (prefix: /users, mounted with users_router)
+│   │   └── rbac.py         # RBAC management (prefix: /rbac)
 │   ├── core/
 │   │   ├── logging.py       # Uvicorn log config builder
 │   │   └── scheduler.py     # APScheduler start/stop
@@ -155,8 +160,11 @@ pybpm-api/
 │       ├── scheduler_service.py # Due schedule dispatch
 │       ├── inbox_service.py   # Inbox message operations
 │       ├── model_service.py   # Model CRUD operations
-│       ├── event_schedule_service.py
-│       └── signal_service.py
+│       ├── signal_service.py
+│       ├── user_service.py
+│       ├── group_service.py
+│       ├── rbac_service.py
+│       └── profile_service.py
 ├── tests/
 │   ├── conftest.py
 │   ├── test_engine_service.py
@@ -314,8 +322,9 @@ class ShapeHandler:
 | IntermediateSignalEvent* | `IntermediateSignalEvent*Handler` | Signal wait/throw |
 | IntermediateErrorEvent | `IntermediateErrorEventHandler` | Error catching |
 | IntermediateConditionalEvent | `IntermediateConditionalEventHandler` | Condition check |
-
 ## API Endpoints
+
+> **Prefix note**: The auth router is mounted with `/api/v1` prefix; all other routers use their own prefix directly under the FastAPI root (`/`).
 
 ### Authentication
 
@@ -328,71 +337,146 @@ class ShapeHandler:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v1/bpm/repository/save` | Save/update model |
-| POST | `/api/v1/bpm/repository/save_as` | Save as new model |
-| POST | `/api/v1/bpm/repository/duplicate` | Clone model |
-| POST | `/api/v1/bpm/repository/add` | Create empty model scaffold |
-| GET | `/api/v1/bpm/repository/load/model/{idwf}` | Load model data |
-| GET | `/api/v1/bpm/repository/dump/model/{idwf}` | Dump model + metadata |
-| DELETE | `/api/v1/bpm/repository/delete` | Delete model |
-| GET | `/api/v1/bpm/repository/svg/{idwf}` | Serve model SVG |
-| GET | `/api/v1/bpm/repository/get_shapes/model/{idwf}` | Get shape metadata |
-| GET | `/api/v1/bpm/repository/get_comments/model/{idwf}/{resource_id}` | Get shape documentation |
-| POST | `/api/v1/bpm/repository/import` | Import model from zip |
-| POST | `/api/v1/bpm/repository/update_folder` | Move model to folder |
-| GET | `/api/v1/bpm/repository/check_model/{name}` | Check model name uniqueness |
-| POST | `/api/v1/bpm/repository/save_script/{idwf}/{resource_id}` | Save script (stub) |
-| POST | `/api/v1/bpm/repository/save_model/{idwf}` | Persist data + SVG payload |
-| GET | `/api/v1/bpm/repository/thumbnail/{idwf}/{w}/{h}` | Thumbnail (stub) |
-| GET | `/api/v1/bpm/repository/tokens/{idwf}/{idcase}/{filter_status}` | Get tokens (stub) |
-| POST | `/api/v1/bpm/repository/get_tree2/{format}` | Build model tree (ExtJS format) |
+| POST | `/bpm/repository/save` | Save/update model |
+| POST | `/bpm/repository/save_as` | Save as new model |
+| POST | `/bpm/repository/duplicate` | Clone model |
+| POST | `/bpm/repository/add/{idwf}` | Create empty model scaffold |
+| GET | `/bpm/repository/load/model/{idwf}` | Load model data |
+| GET | `/bpm/repository/dump/model/{idwf}` | Dump model + metadata |
+| DELETE | `/bpm/repository/delete` | Delete model |
+| GET | `/bpm/repository/svg/{idwf}` | Serve model SVG |
+| GET | `/bpm/repository/get_shapes/model/{idwf}` | Get shape metadata |
+| GET | `/bpm/repository/get_comments/model/{idwf}/{resource_id}` | Get shape documentation |
+| POST | `/bpm/repository/import` | Import model from zip |
+| POST | `/bpm/repository/update_folder` | Move model to folder |
+| GET | `/bpm/repository/check_model/{name}` | Check model name uniqueness |
+| POST | `/bpm/repository/save_script/{idwf}/{resource_id}` | Save script |
+| POST | `/bpm/repository/save_model/{idwf}` | Persist data + SVG payload |
+| GET | `/bpm/repository/thumbnail/{idwf}/{width}/{height}` | Thumbnail |
+| GET | `/bpm/repository/tokens/{idwf}/{idcase}/{filter_status}` | Get tokens |
+| POST | `/bpm/repository/get_tree2/{output_format}` | Build model tree (ExtJS format) |
 
 ### BPM Engine
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v1/bpm/engine/newcase` | Create new case instance |
-| POST | `/api/v1/bpm/engine/start` | Start/resume case at start shapes |
-| POST | `/api/v1/bpm/engine/run/{idwf}/{idcase}` | Execute engine loop |
-| POST | `/api/v1/bpm/engine/post/{idwf}/{idcase}/{resource_id}` | POST data to waiting task (path-based lookup) |
-| POST | `/api/v1/bpm/engine/post/{token_id}` | POST data to waiting task (legacy token-ID lookup) |
-| POST | `/api/v1/bpm/engine/assign` | Assign task to users |
-| POST | `/api/v1/bpm/engine/gate_decision` | Manual gateway decision |
-| POST | `/api/v1/bpm/engine/task_complete` | Complete manual task |
+| POST | `/bpm/engine/newcase` | Create new case instance |
+| POST | `/bpm/engine/start` | Start/resume case at start shapes |
+| POST | `/bpm/engine/run/{idwf}/{idcase}` | Execute engine loop |
+| POST | `/bpm/engine/post/{idwf}/{idcase}/{resource_id}` | POST data to waiting task (path-based lookup) |
+| POST | `/bpm/engine/post/{token_id}` | POST data to waiting task (legacy token-ID lookup) |
+| POST | `/bpm/engine/assign` | Assign task to users |
+| POST | `/bpm/engine/gate/{idwf}/{idcase}/{resource_id}` | Manual gateway decision |
+| POST | `/bpm/engine/task/{idwf}/{idcase}/{resource_id}` | Complete manual task |
+
+### Case Manager
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/bpm/case_manager` | List cases |
+| GET | `/bpm/case_manager/{idcase}` | Get case by ID |
+| PATCH | `/bpm/case_manager/{idcase}` | Update case |
+| DELETE | `/bpm/case_manager/{idcase}` | Delete case |
+| POST | `/bpm/case_manager/{idcase}/freez` | Freeze case |
+| GET | `/bpm/case_manager/data/read/{idwf}` | Read case data |
+| GET | `/bpm/case_manager/search/{status}` | Search cases by status |
+| GET | `/bpm/case_manager/tokens/status/{idwf}/{idcase}` | Get token statuses |
+| POST | `/bpm/case_manager/revert/model/{idwf}/{idcase}/{resource_id}` | Revert model change |
+
+### Token Manager
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/bpm/token_manager/{resource_id}` | Get token by resource ID |
+| GET | `/bpm/token_manager/tokens/{idwf}/{case_id}` | List tokens for case |
+| GET | `/bpm/token_manager/status/{idwf}/{idcase}` | Get token status summary |
+| POST | `/bpm/token_manager/create/{idwf}/{case_id}` | Create token |
+| POST | `/bpm/token_manager/assign/{idwf}/{case_id}/{resource_id}` | Assign token |
+| PATCH | `/bpm/token_manager/update/{idwf}/{case_id}/{resource_id}` | Update token |
+| DELETE | `/bpm/token_manager/delete/{idwf}/{case_id}/{resource_id}` | Delete token |
 
 ### Dashboard
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/dashboard/cases/count` | Open/closed case counts |
-| GET | `/api/v1/dashboard/cases/list` | Paginated case list |
-| GET | `/api/v1/dashboard/tasks/count` | Token counts by status |
-| GET | `/api/v1/dashboard/tasks/list` | Paginated task list |
-| PATCH | `/api/v1/dashboard/tasks/done` | Complete a task |
-| PATCH | `/api/v1/dashboard/tasks/lock` | Lock a task |
-| PATCH | `/api/v1/dashboard/tasks/unlock` | Unlock a task |
-| PATCH | `/api/v1/dashboard/tasks/validate` | Validate a task |
+| GET | `/dashboard/cases` | Paginated case list |
+| GET | `/dashboard/cases/count` | Open/closed case counts |
+| GET | `/dashboard/tasks` | Paginated task list |
+| GET | `/dashboard/tasks/count` | Token counts by status |
+| PATCH | `/dashboard/tasks/done` | Complete a task |
+| PATCH | `/dashboard/tasks/lock` | Lock a task |
+| PATCH | `/dashboard/tasks/unlock` | Unlock a task |
+| PATCH | `/dashboard/tasks/validate` | Validate a task |
 
 ### Inbox
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v1/inbox/filter` | Filter messages by folder/status |
-| GET | `/api/v1/inbox/{msgid}` | Get single message |
-| PUT | `/api/v1/inbox/{msgid}/read` | Mark as read |
-| PUT | `/api/v1/inbox/{msgid}/unread` | Mark as unread |
-| PUT | `/api/v1/inbox/{msgid}/star` | Toggle star |
-| DELETE | `/api/v1/inbox/{msgid}` | Move to trash |
-| GET | `/api/v1/inbox/counts` | Message counts by folder |
-| GET | `/api/v1/inbox/users` | Search users |
+| GET | `/inbox` | List messages |
+| POST | `/inbox/filter/` | Filter messages by folder/status |
+| GET | `/inbox/message/{msgid}/` | Get single message |
+| PATCH | `/inbox/message/{msgid}/` | Update message |
+| PUT | `/inbox/message/{msgid}/read` | Mark as read |
+| PUT | `/inbox/message/{msgid}/unread` | Mark as unread |
+| PUT | `/inbox/message/{msgid}/star` | Toggle star |
+| DELETE | `/inbox/message/{msgid}/` | Move to trash |
+| POST | `/inbox/send/` | Send message |
+| POST | `/inbox/counts/` | Message counts by folder |
+| GET | `/inbox/users` | Search users |
 
 ### Event Schedule
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/event_schedule/list` | List scheduled events |
-| POST | `/api/v1/event_schedule/create` | Create schedule entry |
-| DELETE | `/api/v1/event_schedule/{id}` | Delete schedule entry |
+| GET | `/events/schedules` | List scheduled events |
+| POST | `/events/schedules` | Create schedule entry |
+| GET | `/events/schedules/{idschedule}` | Get schedule entry |
+| PATCH | `/events/schedules/{idschedule}` | Update schedule entry |
+| DELETE | `/events/schedules/{idschedule}` | Delete schedule entry |
+
+### Users
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/users` | List users |
+| POST | `/users` | Create user |
+| GET | `/users/{idu}` | Get user by ID |
+| PUT | `/users/{idu}` | Update user |
+| DELETE | `/users/{idu}` | Delete user |
+| GET | `/users/count` | User count |
+| GET | `/users/profile` | Get current user profile |
+| PUT | `/users/profile` | Update current user profile |
+
+### Groups
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/groups` | List groups |
+| POST | `/groups` | Create group |
+| GET | `/groups/{idgroup}` | Get group by ID |
+| PUT | `/groups/{idgroup}` | Update group |
+| DELETE | `/groups/{idgroup}` | Delete group |
+| GET | `/groups/count` | Group count |
+
+### RBAC
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/rbac/paths` | List RBAC paths |
+| PUT | `/rbac/paths` | Update RBAC paths |
+| GET | `/rbac/repository` | List repository permissions |
+| POST | `/rbac/repository` | Create repository permission |
+| DELETE | `/rbac/repository` | Delete repository permission |
+| PUT | `/rbac/repository/` | Update repository permission |
+| GET | `/rbac/repository/root` | Get repository root |
+| POST | `/rbac/repository/root` | Set repository root |
+| PUT | `/rbac/repository/root` | Update repository root |
+
+### Admin
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/admin/health` | Health check |
 
 ## Configuration
 

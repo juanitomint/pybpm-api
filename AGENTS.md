@@ -17,55 +17,109 @@ A high-performance **FastAPI** backend for the BPM suite. It utilizes **SQLAlche
 
 ```
 pybpm-api/
-├── main.py                 # FastAPI application entry point
-├── config.py               # Pydantic Settings (loads from .env)
-├── extensions.py           # Shared instances (e.g., SQLAlchemy engine/session)
-│
+├── main.py                 # FastAPI app, middleware, router wiring
+├── config.py               # Pydantic-settings-style Config class
+├── extensions.py           # Async engine/session factories, DB deps
+├── pyproject.toml          # Dependencies + tool config
+├── Dockerfile              # Multi-stage: python:3.14-slim + uv
+├── docker-compose.yml      # App + PostgreSQL service
+├── boot.sh                 # Startup: db migration → uvicorn
+├── init.sql                # Initial DB schema
 ├── app/
-│   ├── api/                # FastAPI Routers (Endpoints)
+│   ├── __init__.py
+│   ├── api/
 │   │   ├── __init__.py
-│   │   ├── auth.py         # Auth & Identity endpoints
-│   │   ├── admin.py        # Admin user management
-│   │   ├── admin_groups.py # Admin group management
-│   │   ├── rbac.py         # RBAC management
-│   │   ├── profile.py      # User profile endpoints
-│   │   └── bpm/            # BPM core logic (one controller per file)
-│   │       ├── __init__.py
-│   │       └── repository.py  # Model CRUD, mirrors Repository.php
-│   ├── models/             # SQLAlchemy ORM Models
-│   │   ├── __init__.py
-│   │   ├── base.py         # DeclarativeBase
-│   │   ├── bpm_model.py    # BPMN model definitions
-│   │   ├── user.py         # User accounts
-│   │   ├── group.py        # User groups
-│   │   ├── user_group.py   # User-group junction
+│   │   ├── admin.py        # GET /admin/health
+│   │   ├── auth.py         # POST /api/v1/auth/token, GET /api/v1/auth/me
+│   │   ├── bpm/
+│   │   │   ├── __init__.py
+│   │   │   ├── repository.py  # Model CRUD (prefix: /bpm/repository)
+│   │   │   ├── engine.py    # Case lifecycle: newcase, start, run, post, assign
+│   │   │   ├── cases.py     # Case manager endpoints (prefix: /bpm/case_manager)
+│   │   │   ├── tokens.py    # Token manager endpoints (prefix: /bpm/token_manager)
+│   │   │   └── event_schedule.py  # Scheduled events (prefix: /events/schedules)
+│   │   ├── dashboard.py    # Case/task counts, task lifecycle (lock/unlock/validate/done)
+│   │   ├── inbox.py        # Inbox message filtering, CRUD
+│   │   ├── groups.py       # Group CRUD (prefix: /groups)
+│   │   ├── users.py        # User CRUD (prefix: /users)
+│   │   ├── profile.py      # User profile (prefix: /users, mounted with users_router)
+│   │   └── rbac.py         # RBAC management (prefix: /rbac)
+│   ├── core/
+│   │   ├── logging.py      # Uvicorn log config builder
+│   │   └── scheduler.py    # APScheduler start/stop
+│   ├── handlers/
+│   │   ├── __init__.py     # Auto-registration of all handlers
+│   │   ├── flow.py         # SequenceFlow, MessageFlow, _safe_eval
+│   │   ├── gate.py         # ParallelGateway, ExclusiveDatabasedGateway, EventbasedGateway
+│   │   ├── task.py         # User/Manual/Script/Send/Receive task types
+│   │   ├── event.py        # Intermediate events (timer, message, signal, error, etc.)
+│   │   ├── start_end.py    # StartNone/Message/Timer, EndNone/Message/Error/Cancel/Terminate
+│   │   ├── subproc.py      # CollapsedSubprocess (child case delegation)
+│   │   └── eval_context.py # Script execution namespace builder
+│   ├── models/
+│   │   ├── base.py         # SQLAlchemy DeclarativeBase
+│   │   ├── bpm_model.py    # BpmModel — BPMN model JSON + SVG storage
+│   │   ├── case.py         # BpmCase — case instance (parent/child hierarchy)
+│   │   ├── token.py        # Token, TokenHistory — workflow execution tokens
+│   │   ├── user.py         # User
+│   │   ├── group.py        # Group
+│   │   ├── user_group.py   # UserGroup
+│   │   ├── permission_group.py
 │   │   ├── permission_repository.py
-│   │   └── permission_group.py
-│   ├── schemas/            # Pydantic Models (Request/Response)
-│   │   ├── __init__.py
-│   │   ├── repository.py   # Model request/response schemas
-│   │   └── user.py         # User/group/profile schemas
-│   ├── services/           # Business Logic (Service Layer)
-│   │   ├── __init__.py
-│   │   ├── model_service.py  # BPMN model business logic
-│   │   ├── user_service.py
-│   │   ├── group_service.py
-│   │   ├── rbac_service.py
-│   │   └── profile_service.py
-│   └── core/               # Security, Constants, Utilities
-│       └── auth.py         # JWT bearer dependency
-│
+│   │   ├── message.py      # Message — inbox items
+│   │   ├── signal.py       # Signal definitions
+│   │   ├── event_schedule.py # Scheduled event triggers
+│   │   └── __init__.py
+│   ├── schemas/
+│   │   ├── case.py
+│   │   ├── dashboard.py
+│   │   ├── engine.py
+│   │   ├── event_schedule.py
+│   │   ├── inbox.py
+│   │   ├── repository.py
+│   │   ├── token.py
+│   │   └── __init__.py
+│   └── services/
+│       ├── engine_service.py  # Core engine: token lifecycle, shape dispatch, movenext
+│       ├── bpm_service.py     # gen_case, startcase, subprocess orchestration
+│       ├── scheduler_service.py # Due schedule dispatch
+│       ├── inbox_service.py   # Inbox message operations
+│       ├── model_service.py   # Model CRUD operations
+│       ├── event_schedule_service.py
+│       ├── signal_service.py
+│       ├── user_service.py
+│       ├── group_service.py
+│       ├── rbac_service.py
+│       └── profile_service.py
 ├── migrations/              # Alembic migration files
 │   ├── env.py
 │   └── versions/
-│
-├── conftest.py             # Root async test fixtures
-├── alembic.ini             # Alembic configuration
-├── pyproject.toml          # Project dependencies and tools
-└── .env                    # Environment variables (not committed)
+├── tests/
+│   ├── conftest.py
+│   ├── test_engine_service.py
+│   ├── test_flow_handlers.py
+│   ├── test_gate_handlers.py
+│   ├── test_task_handlers.py
+│   ├── test_eval_context.py
+│   ├── test_cancel_logic.py
+│   ├── test_dashboard_lock_unlock.py
+│   ├── test_dashboard_tasks.py
+│   ├── test_inbox_api.py
+│   ├── test_movenext_outgoing.py
+│   └── test_event_schedule_api.py
+├── tools/
+│   ├── seed_models.py
+│   ├── seed_tasktype.py
+│   ├── seed_users.py
+│   └── test_model*.py
+└── files/
+    └── images/
+        ├── model/
+        ├── svg/
+        └── zip/           # BPMN model archives (test cases)
 ```
 
-Note: `case.py`, `auth_service.py`, and `case_service.py` will be added when the Case Manager component is ported from legacy PHP. The BPM Engine, RBAC service, and Scheduler components are also pending migration from the legacy `dna2bpm/application/modules/bpm/` codebase.
+Note: The BPM Engine, RBAC service, Scheduler, Case Manager, Inbox, and Dashboard components have been ported from the legacy `dna2bpm/application/modules/bpm/` codebase. Remaining work: additional handler coverage for edge-case BPMN constructs, and any remaining legacy controllers not yet mapped to FastAPI endpoints.
 
 ## Development Workflow
 
@@ -174,10 +228,9 @@ After making any code changes, always run:
 
 ```bash
 uv run ruff check --fix app/
-uv run black app/
 ```
 
-Ruff enforces style rules; Black formats the code. Both must pass before considering work complete. Ruff and Black are configured in `pyproject.toml`.
+Ruff enforces style rules and formatting. It is configured in `ruff.toml`.
 
 ## Git & Commits
 

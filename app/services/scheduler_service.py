@@ -105,7 +105,7 @@ class SchedulerService:
                     continue
 
                 # Advance the engine past this shape via movenext.
-                service = EngineService(self.db)  # type: ignore[call-arg]
+                service = await EngineService.create(self.db, idwf=schedule.idwf, idcase=schedule.case_id)
                 await service.movenext(
                     schedule.resource_id, schedule.idwf, schedule.case_id
                 )
@@ -200,7 +200,7 @@ class SchedulerService:
                     continue  # No matching signal — keep waiting.
 
                 # Found matching signals — fire this schedule.
-                engine_service = EngineService(self.db)  # type: ignore[call-arg]
+                engine_service = await EngineService.create(self.db, idwf=schedule.idwf, idcase=schedule.case_id)
                 await engine_service.movenext(
                     schedule.resource_id, schedule.idwf, schedule.case_id
                 )
@@ -275,7 +275,7 @@ class SchedulerService:
             return False
 
         # Advance the engine past this shape via movenext.
-        service = EngineService(self.db)  # type: ignore[call-arg]
+        service = await EngineService.create(self.db, idwf=schedule.idwf, idcase=schedule.case_id)
         await service.movenext(schedule.resource_id, schedule.idwf, schedule.case_id)
 
         # Mark schedule as fired with updated_at timestamp.

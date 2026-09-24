@@ -24,6 +24,8 @@ import random
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from extensions import get_async_db
 
 from app.api.auth import get_current_user
 from app.models.bpm_model import BpmModel
@@ -122,8 +124,9 @@ _DEFAULT_SHAPE_HANDLER = _DefaultShapeHandler()
 async def newcase(
     body: NewcaseRequest,
     user: User = Depends(get_current_user),
-    service: EngineService = Depends(get_engine_service),
+    db: AsyncSession = Depends(get_async_db),
 ):
+    service = await EngineService.create(db, idwf=body.idwf)
     """Create a new case instance for the given workflow.
 
     Ported from legacy ``Engine::Newcase()``:
@@ -201,8 +204,9 @@ async def newcase(
 async def start(
     body: StartRequest,
     user: User = Depends(get_current_user),
-    service: EngineService = Depends(get_engine_service),
+    db: AsyncSession = Depends(get_async_db),
 ):
+    service = await EngineService.create(db, idwf=body.idwf)
     """Resume an existing case at its diagram's start shapes.
 
     Ported from legacy ``Engine::Start()`` which delegates to ``Startcase()``:
@@ -488,8 +492,9 @@ async def post_data(
 async def assign(
     body: AssignRequest,
     user: User = Depends(get_current_user),
-    service: EngineService = Depends(get_engine_service),
+    db: AsyncSession = Depends(get_async_db),
 ):
+    service = await EngineService.create(db, idwf=body.idwf)
     """Assign a task to one or more users.
 
     Ported from legacy ``Engine::assign($model, $idwf, $idcase, $src_resourceId, $resourceId, $idu)``

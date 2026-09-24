@@ -291,8 +291,8 @@ async def get_token_status(
             else ""
         )
 
-        # Get title from name field (legacy: $token['title']=$token['name'])
-        token_title = getattr(token, "name", "") or ""
+        # Get title from shape name (legacy MongoDB: $token['title']=$token['name'])
+        token_title = getattr(token, "title", "") or ""
 
         # Calculate microtime from check_date (Unix timestamp with microseconds)
         microtime_val = 0.0

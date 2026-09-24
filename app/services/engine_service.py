@@ -32,8 +32,26 @@ class EngineService:
     It's called by the FastAPI router endpoints in `app/api/bpm/engine.py`.
     """
 
-    def __init__(self, db: AsyncSession):
+    @classmethod
+    async def create(cls, db: AsyncSession, idwf: str | None = None, idcase: str | None = None) -> "EngineService":
+        """Async factory — loads the flat model eagerly so it's available immediately."""
+        self = cls.__new__(cls)
         self.db = db
+        self._idwf = idwf
+        self._idcase = idcase
+        if idwf:
+            from app.services.model_service import ModelService
+            service = ModelService(db)
+            self._flat_model = await service.get_flat_model(idwf)
+        else:
+            self._flat_model = {}
+        return self
+    def __init__(self, db: AsyncSession, idwf: str | None = None, idcase: str | None = None):
+        self.db = db
+        self._idwf = idwf
+        self._idcase = idcase
+        self._flat_model: dict[str, Any] = {}
+
 
 
     # -- Token lifecycle ----------------------------------------------------- #
@@ -213,21 +231,16 @@ class EngineService:
     ) -> int:
         """Cancel all non-finished tokens inside a Subprocess container shape.
 
-        Walks the model data under ``childShapes`` / ``shapes`` of the given
-        resourceId to find descendant shapes, then marks their tokens as
-        'canceled' with cancel metadata. Recurses into nested Subprocess /
-        CollapsedSubprocess children so deeply-nested token trees are fully
-        cleared. Returns count of canceled tokens.
+        Uses the flat model to find the container (O(1)) then walks its
+        ``childShapes`` / ``shapes`` arrays to find descendant shapes, marking
+        their tokens as 'canceled'. Recurses into nested Subprocess /
+        CollapsedSubprocess children. Returns count of canceled tokens.
 
         Mirrors legacy ``run_IntermediateEventCatching()`` L307-316 plus the
         TODO-dive-deeper comment for nested subprocesses.
         """
-        from app.models.bpm_model import BpmModel as _BpmModel
-
-        stmt = sa.select(_BpmModel.data).where(_BpmModel.idwf == idwf)
-        result = await self.db.execute(stmt)  # type: ignore[misc]
-        model_data = result.scalar_one_or_none()
-        if not isinstance(model_data, dict):
+        container = self._flat_model.get(resource_id)
+        if not container:
             return 0
 
         canceled_count = 0
@@ -258,30 +271,13 @@ class EngineService:
                         canceled_count += 1
                     child_stencil = (child.get("stencil") or {}).get("id", "")
                     if child_stencil in ("Subprocess", "CollapsedSubprocess"):
-                        await _cancel_descendants(child)
+                        # For nested subprocesses, look up their shape in the
+                        # flat model to get their childShapes.
+                        nested = flat.get(rid)
+                        if nested:
+                            await _cancel_descendants(nested)
 
-        def _find_container(node: dict, target_rid: str) -> dict | None:
-            if not isinstance(node, dict):
-                return None
-            for key in ("childShapes", "shapes"):
-                children = node.get(key, []) or []
-                if not isinstance(children, list):
-                    continue
-                for child in children:
-                    if not isinstance(child, dict):
-                        continue
-                    rid = child.get("resourceId") or child.get("id", "")
-                    if rid == target_rid:
-                        return node
-                    found = _find_container(child, target_rid)
-                    if found is not None:
-                        return found
-            return None
-
-        container = _find_container(model_data, resource_id)
-        if container:
-            await _cancel_descendants(container)
-
+        await _cancel_descendants(container)
         return canceled_count
 
     # -- Event schedule management ------------------------------------------- #
@@ -367,11 +363,8 @@ class EngineService:
         """Find the container parent shape of a given shape in the model tree.
 
         First checks ``shape.properties.subproc_parent`` (explicit parent reference),
-        then walks the childShapes tree to find which shape has this resourceId as a
+        then scans the flat model to find which shape has this resourceId as a
         direct childShape. Returns None if no parent found.
-
-        Mirrors legacy ``run_EndNoneEvent()`` logic that checks $shape->properties->subproc_parent
-        before falling back to get_shape_parent($shape->resourceId, $wf).
         """
         # Step 1: Check shape's own subproc_parent property.
         shape = await self.get_shape(resource_id, idwf)
@@ -384,31 +377,14 @@ class EngineService:
             if parent:
                 return parent
 
-        # Step 2: Walk tree to find which shape contains this resourceId as a child.
-        stmt = select(BpmModel.data).where(BpmModel.idwf == idwf)
-        result = await self.db.execute(stmt)
-        data = result.scalar_one_or_none()
-        if not data or "childShapes" not in data:
-            return None
-
-        def _walk(node: dict):
-            if not isinstance(node, dict):
-                return None
+        # Step 2: Scan flat model for the shape that contains this resourceId.
+        for candidate in self._flat_model.values():
             for key in ("childShapes", "shapes"):
-                children = node.get(key, [])
-                if isinstance(children, list):
-                    for child in children:
-                        if not isinstance(child, dict):
-                            continue
+                for child in (candidate.get(key) or []):
+                    if isinstance(child, dict):
                         rid = child.get("resourceId") or child.get("id")
                         if rid == resource_id:
-                            return node  # found parent!
-                        found = _walk(child)
-                        if found:
-                            return found
-            return None
-
-        return _walk(data)
+                            return candidate
 
     async def close_case_if_empty(
         self, idwf: str, case_id: str, closer_resource_id: str | None = None
@@ -454,85 +430,26 @@ class EngineService:
 
     async def get_shape(self, resource_id: str, idwf: str) -> dict | None:
         """Fetch a single shape from the model by resourceId."""
-        stmt = select(BpmModel.data).where(BpmModel.idwf == idwf)
-        result = await self.db.execute(stmt)
-        data = result.scalar_one_or_none()
-
-        if not data or "childShapes" not in data:
-            return None
-
-        # Walk shape tree to find matching resourceId
-        def _walk(node: dict) -> dict | None:
-            if not isinstance(node, dict):
-                return None
-            if node.get("resourceId") == resource_id or node.get("id") == resource_id:
-                return node
-            for key in ("childShapes", "shapes"):
-                children = node.get(key, [])
-                if isinstance(children, list):
-                    for child in children:
-                        found = _walk(child)
-                        if found:
-                            return found
-            return None
-
-        return _walk(data)
+        return self._flat_model.get(resource_id)
 
     async def get_start_shapes(self, idwf: str) -> list[dict]:
         """Find all start shapes (StartNoneEvent stencils) in a model."""
-        stmt = select(BpmModel.data).where(BpmModel.idwf == idwf)
-        result = await self.db.execute(stmt)
-        data = result.scalar_one_or_none()
-
-        if not data or "childShapes" not in data:
-            return []
-
-        starts: list[dict] = []
-
-        def _walk(node: dict):
-            if not isinstance(node, dict):
-                return
-            stencil = node.get("stencil") or {}
-            if stencil.get("id") == "StartNoneEvent":
-                starts.append(node)
-            for key in ("childShapes", "shapes"):
-                children = node.get(key, [])
-                if isinstance(children, list):
-                    for child in children:
-                        _walk(child)
-
-        _walk(data)
-        return starts
+        return [
+            shape for shape in self._flat_model.values()
+            if (shape.get("stencil") or {}).get("id") == "StartNoneEvent"
+        ]
 
     async def get_previous(self, resource_id: str, idwf: str) -> list[dict]:
         """Find all inbound shapes (predecessors) for a given shape."""
-        stmt = select(BpmModel.data).where(BpmModel.idwf == idwf)
-        result = await self.db.execute(stmt)
-        data = result.scalar_one_or_none()
-
-        if not data or "childShapes" not in data:
-            return []
-
         previous: list[dict] = []
-
-        def _walk(node: dict):
-            if not isinstance(node, dict):
-                return
-            outgoing = node.get("outgoing", []) or []
-            for pointer in outgoing:
+        for shape in self._flat_model.values():
+            for pointer in (shape.get("outgoing") or []):
                 if not isinstance(pointer, dict):
                     continue
                 rid = pointer.get("resourceId") or pointer.get("id")
                 if rid == resource_id:
-                    previous.append(node)
+                    previous.append(shape)
                     break
-            for key in ("childShapes", "shapes"):
-                children = node.get(key, [])
-                if isinstance(children, list):
-                    for child in children:
-                        _walk(child)
-
-        _walk(data)
         return previous
 
     # -- movenext ------------------------------------------------------------ #
@@ -657,8 +574,11 @@ class EngineService:
 
         return unquote_plus(value)
 
-
-def get_engine_service(db: AsyncSession = Depends(get_async_db)):
+async def get_engine_service(
+    db: AsyncSession = Depends(get_async_db),
+    idwf: str | None = None,
+    idcase: str | None = None,
+) -> EngineService:
     """FastAPI dependency that yields a bound ``EngineService``.
 
     Usage in router endpoints::
@@ -669,5 +589,6 @@ def get_engine_service(db: AsyncSession = Depends(get_async_db)):
             ...
 
     The `db` parameter is resolved by FastAPI via dependency injection.
+    `idwf` and `idcase` are passed from the path when available.
     """
-    return EngineService(db)
+    return await EngineService.create(db, idwf=idwf, idcase=idcase)

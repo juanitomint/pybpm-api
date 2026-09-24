@@ -165,6 +165,47 @@ class ModelService:
 
         return model, model_file, zip_path
 
+    async def get_flat_model(self, idwf: str) -> dict[str, Any]:
+        """Return a flat dict of all shapes indexed by ``resourceId``.
+
+        Walks the model's ``childShapes`` tree and collects every node with
+        its full shape representation (properties, stencil, childShapes,
+        outgoing, bounds, dockers, target).
+
+        Returns ``{resourceId: shape_dict, ...}``.
+        """
+        stmt = select(BpmModel.data).where(BpmModel.idwf == idwf)
+        result = await self.db.execute(stmt)
+        data = result.scalar_one_or_none()
+
+        if not data or "childShapes" not in data:
+            return {}
+
+        flat: dict[str, Any] = {}
+
+        def _collect(node: dict) -> None:
+            rid = node.get("resourceId") or node.get("id")
+            if rid:
+                flat[rid] = {
+                    "resourceId": rid,
+                    "properties": node.get("properties") or {},
+                    "stencil": node.get("stencil") or {},
+                    "childShapes": node.get("childShapes") or [],
+                    "outgoing": node.get("outgoing") or [],
+                    "bounds": node.get("bounds") or {},
+                    "dockers": node.get("dockers") or [],
+                    "target": node.get("target") or {},
+                }
+            for key in ("childShapes", "shapes"):
+                children = node.get(key) or []
+                if isinstance(children, list):
+                    for child in children:
+                        if isinstance(child, dict):
+                            _collect(child)
+
+        _collect(data)
+        return flat
+
 
 async def get_model_service(db: AsyncSession = Depends(get_async_db)):
     """FastAPI dependency that yields a bound ``ModelService``."""

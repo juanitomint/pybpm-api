@@ -254,6 +254,13 @@ async def run_intermediate_event_catching(
     else:
         has_finished_flow = True
 
+    # If throwers were found and all are finished, consider flows as finished too.
+    # This handles the case where the catcher is directly dispatched by a thrower
+    # (e.g., IntermediateMessageEventThrowing) but the inbound sequence flow
+    # token is still "pending" because it was just created by movenext().
+    if throwers and has_finished_thrower:
+        has_finished_flow = True
+
     # Merge conditions.
     has_finished = has_finished_flow and has_finished_thrower
     if not is_interrupting:
@@ -639,7 +646,8 @@ class IntermediateLinkEventThrowingHandler:
 class IntermediateSignalEventThrowingHandler:
     """Handle a token arriving on an IntermediateSignalEventThrowing shape.
 
-    Routes to generic throwing logic via :func:`run_intermediate_event_throwing`.
+    Broadcasts the signal to SignalService so all matching catchers can pick it up.
+    Signal catchers check SignalService for active signals and advance if found.
     """
 
     _STENCIL_ID = "IntermediateSignalEventThrowing"
@@ -649,8 +657,17 @@ class IntermediateSignalEventThrowingHandler:
         return cls._STENCIL_ID
 
     async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:
-        await run_intermediate_event_throwing(shape, token.idwf, token.case_id, service)
-        return False
+        # Broadcast signal to SignalService so all matching catchers can pick it up.
+        # Do NOT dispatch catchers directly — signal catchers need to check
+        # SignalService for active signals (which may not exist yet).
+        from app.services.signal_service import SignalService
+
+        signal_name = (shape.get("properties") or {}).get("name", "")
+        if signal_name:
+            signal_svc = SignalService(service.db)
+            await signal_svc.broadcast(signal_name)
+            logger.info("SignalThrowingHandler: broadcast signal '%s'", signal_name)
+        return True
 
 
 # -- Auto-registration at import time ----------------------------------------- #

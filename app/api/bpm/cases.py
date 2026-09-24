@@ -238,7 +238,7 @@ async def get_token_status(
     stmt = (
         select(Token)
         .where(Token.case_id == idcase, Token.idwf == idwf)
-        .order_by(Token.check_date)
+        .order_by(Token.idtoken)
     )
 
     result = await db.execute(stmt)
@@ -679,7 +679,7 @@ async def revert_model(
     )
     result = await db.execute(stmt)
     target_token: Token | None = result.scalar_one_or_none()
-
+    logger.info(target_token)
     if target_token is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -687,6 +687,7 @@ async def revert_model(
         )
 
     # Delete all tokens created after the target token (legacy: $gt filter)
+
     await db.execute(
         sa_delete(Token).where(
             Token.case_id == idcase,

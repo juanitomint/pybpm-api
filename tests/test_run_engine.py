@@ -84,6 +84,7 @@ async def seeded_token(setup_test_db):
     """Seed a token matching the seeded_model shapes."""
     factory = setup_test_db["factory"]
     token = Token(
+        idtoken=1,
         resource_id="task1",
         idwf="w1",
         case_id="c1",
@@ -215,6 +216,7 @@ async def test_post_triggers_full_engine_loop(
     # Seed a pending token on the StartNoneEvent
     factory = setup_test_db["factory"]
     token = Token(
+        idtoken=2,
         resource_id="start1",
         idwf="w-parallel",
         case_id="c2",

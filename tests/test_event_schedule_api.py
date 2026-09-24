@@ -178,6 +178,7 @@ async def test_set_token_status_updates_token():
 
         # Create a token first.
         token = Token(
+            idtoken=7,
             idwf="token-wf",
             case_id="T-CASE",
             resource_id="t-shape",

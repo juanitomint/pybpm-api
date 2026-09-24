@@ -121,9 +121,10 @@ class TestEngineService:
 class TestGetEngineService:
     """Test the get_engine_service dependency function."""
 
-    def test_returns_engine_service(self, mock_db):
+    @pytest.mark.asyncio
+    async def test_returns_engine_service(self, mock_db):
         """Test that get_engine_service returns an EngineService instance."""
         from app.services.engine_service import get_engine_service
 
-        service = get_engine_service(mock_db)
+        service = await get_engine_service(mock_db)
         assert isinstance(service, EngineService)

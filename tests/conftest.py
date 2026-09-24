@@ -45,6 +45,14 @@ async def setup_test_db():
     factory = async_sessionmaker(bind=engine, class_=AsyncSession)
     _state._factory = factory  # type: ignore[attr-defined]
 
+    # Patch Token.idtoken to use Integer for SQLite (avoids uuidv7() dependency).
+    import sqlalchemy as _sa
+    Token.__table__.c.idtoken.type = _sa.Integer()
+    Token.__table__.c.idtoken.server_default = None
+    from app.models.token import TokenHistory
+    TokenHistory.__table__.c.idhistory.type = _sa.Integer()
+    TokenHistory.__table__.c.idhistory.server_default = None
+
     async with engine.begin() as conn:
         await conn.run_sync(_ModelBase.metadata.create_all)
 
@@ -141,7 +149,7 @@ async def seed_token(setup_test_db):
     """
 
     factory = setup_test_db["factory"]
-    token = Token(resource_id="r1", idwf="w1", case_id="c1", type="Task", assign=[1])
+    token = Token(idtoken=1, resource_id="r1", idwf="w1", case_id="c1", type="Task", assign=[1])
     async with factory() as s:
         s.add(token)
         await s.commit()

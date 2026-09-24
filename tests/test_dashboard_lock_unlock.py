@@ -24,7 +24,7 @@ async def seeded_token_with_assign(setup_test_db):
 
     factory = setup_test_db["factory"]
     # assign=[999] — admin user has idu=1, so they're not assigned.
-    token = Token(resource_id="r2", idwf="w2", case_id="c1", type="Task", assign=[999])
+    token = Token(idtoken=2, resource_id="r2", idwf="w2", case_id="c1", type="Task", assign=[999])
     async with factory() as s:
         s.add(token)
         await s.commit()

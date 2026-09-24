@@ -47,6 +47,7 @@ async def seeded_in_progress_tokens(setup_test_db):
 
     factory = setup_test_db["factory"]
     token = Token(
+        idtoken=4,
         resource_id="r10",
         idwf="w2",
         case_id="c10",
@@ -67,6 +68,7 @@ async def seeded_validating_tokens(setup_test_db):
 
     factory = setup_test_db["factory"]
     token = Token(
+        idtoken=5,
         resource_id="r20",
         idwf="w3",
         case_id="c20",
@@ -86,6 +88,7 @@ async def seeded_done_tokens(setup_test_db):
 
     factory = setup_test_db["factory"]
     token = Token(
+        idtoken=6,
         resource_id="r30",
         idwf="w4",
         case_id="c30",

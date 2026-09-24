@@ -184,6 +184,7 @@ async def newcase(
                 resource_id=resource_id,
                 type_=stencil_id,
                 status="pending",
+                title=shape.get("properties", {}).get("name"),
             )
 
     # 5. Save the case record (flush + commit — flush alone won't persist).
@@ -246,6 +247,7 @@ async def start(
                 resource_id=resource_id,
                 type_=stencil_id,
                 status="pending",
+                title=shape.get("properties", {}).get("name"),
             )
             tokens_created += 1
 
@@ -417,7 +419,6 @@ async def post(
     # ``$this->bpm->movenext()`` after persisting external data.
     if token.status != "finished":
         await service.mark_token_finished(token)
-    await service.movenext(token.resource_id, token.idwf, token.case_id)
     # Run engine loop to completion — processes all reachable tokens.
     await service.run_engine(token.idwf, token.case_id)
 
@@ -474,7 +475,6 @@ async def post_data(
 
     # Advance the engine — mirrors legacy ``Engine::run_post()`` which calls
     # ``$this->bpm->movenext()`` after persisting external data.
-    await service.movenext(token.resource_id, token.idwf, token.case_id)
     # Run engine loop to completion — processes all reachable tokens.
     await service.run_engine(token.idwf, token.case_id)
 
@@ -717,7 +717,6 @@ async def task_complete(
         token.check_date = datetime.now(UTC)
         await service.db.flush()
 
-    # Advance engine along outgoing flows — movenext handles the rest
     await service.movenext(resource_id, idwf, idcase)
 
     return TaskCompleteResponse(ok=True, msg="Task completed successfully")

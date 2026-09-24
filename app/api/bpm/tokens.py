@@ -167,6 +167,7 @@ async def list_tokens(
                 "idwf": idwf,
                 "case_id": case_id,
                 "type": token.type,
+                "title": token.title,
                 "status": token.status,
                 "assign": token.assign or [],
                 "name_user": user_name,

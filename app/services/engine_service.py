@@ -12,7 +12,6 @@ Key responsibilities:
 - Signal/trigger/subprocess handling (deferred)
 """
 
-import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
@@ -36,6 +35,7 @@ class EngineService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+
     # -- Token lifecycle ----------------------------------------------------- #
 
     async def create_token(
@@ -45,6 +45,7 @@ class EngineService:
         resource_id: str,
         type_: str,
         status: str = "pending",
+        title: str | None = None,
     ) -> None:
         """Insert a new token for a shape in a case."""
         token = Token(
@@ -53,10 +54,48 @@ class EngineService:
             resource_id=resource_id,
             type=type_,
             status=status,
-            assign=[],  # empty assignment initially
+            assign=[],
+            title=title,
         )
         self.db.add(token)
         await self.db.flush()
+    async def upsert_token(
+        self,
+        idwf: str,
+        case_id: str,
+        resource_id: str,
+        type_: str,
+        status: str = "pending",
+    ) -> None:
+        """Create a new token or reset an existing one to the given status.
+
+        When a token already exists for this (idwf, case_id, resource_id),
+        its status and updated_at are reset — used by ``movenext`` to
+        re-activate tokens that were consumed by a gateway's synchronization.
+        """
+        # Look up shape to extract title for UI display.
+        shape = await self.get_shape(resource_id, idwf)
+        title = None
+        if shape:
+            title = (shape.get("properties") or {}).get("name")
+
+        existing = await self.get_token(idwf, case_id, resource_id)
+        if existing is not None:
+            existing.status = status
+            if title:
+                existing.title = title
+            existing.updated_at = datetime.now(UTC)
+            await self.db.flush()
+            return
+
+        await self.create_token(
+            idwf=idwf,
+            case_id=case_id,
+            resource_id=resource_id,
+            type_=type_,
+            status=status,
+            title=title,
+        )
 
     async def delete_tokens(self, idwf: str, case_id: str) -> None:
         """Delete all tokens for a case (used before restart)."""
@@ -535,16 +574,13 @@ class EngineService:
             if out_stencil in ignored_shapes:
                 continue
 
-            # Check if token already exists for this shape
-            existing = await self.get_token(idwf, case_id, out_rid)
-            if not existing:
-                await self.create_token(
-                    idwf=idwf,
-                    case_id=case_id,
-                    resource_id=out_rid,
-                    type_=out_stencil,
-                    status="pending",
-                )
+            await self.upsert_token(
+                idwf=idwf,
+                case_id=case_id,
+                resource_id=out_rid,
+                type_=out_stencil,
+                status="pending",
+            )
 
     # -- Engine loop --------------------------------------------------------- #
 

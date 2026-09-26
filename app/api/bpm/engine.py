@@ -25,7 +25,6 @@ import random
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from extensions import get_async_db
 
 from app.api.auth import get_current_user
 from app.models.bpm_model import BpmModel
@@ -50,6 +49,7 @@ from app.schemas.engine import (
     TaskCompleteResponse,
 )
 from app.services.engine_service import EngineService, get_engine_service
+from extensions import get_async_db
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/bpm/engine", tags=["engine"])

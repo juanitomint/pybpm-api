@@ -33,7 +33,9 @@ class EngineService:
     """
 
     @classmethod
-    async def create(cls, db: AsyncSession, idwf: str | None = None, idcase: str | None = None) -> "EngineService":
+    async def create(
+        cls, db: AsyncSession, idwf: str | None = None, idcase: str | None = None
+    ) -> "EngineService":
         """Async factory — loads the flat model eagerly so it's available immediately."""
         self = cls.__new__(cls)
         self.db = db
@@ -41,18 +43,20 @@ class EngineService:
         self._idcase = idcase
         if idwf:
             from app.services.model_service import ModelService
+
             service = ModelService(db)
             self._flat_model = await service.get_flat_model(idwf)
         else:
             self._flat_model = {}
         return self
-    def __init__(self, db: AsyncSession, idwf: str | None = None, idcase: str | None = None):
+
+    def __init__(
+        self, db: AsyncSession, idwf: str | None = None, idcase: str | None = None
+    ):
         self.db = db
         self._idwf = idwf
         self._idcase = idcase
         self._flat_model: dict[str, Any] = {}
-
-
 
     # -- Token lifecycle ----------------------------------------------------- #
 
@@ -77,6 +81,7 @@ class EngineService:
         )
         self.db.add(token)
         await self.db.flush()
+
     async def upsert_token(
         self,
         idwf: str,
@@ -380,7 +385,7 @@ class EngineService:
         # Step 2: Scan flat model for the shape that contains this resourceId.
         for candidate in self._flat_model.values():
             for key in ("childShapes", "shapes"):
-                for child in (candidate.get(key) or []):
+                for child in candidate.get(key) or []:
                     if isinstance(child, dict):
                         rid = child.get("resourceId") or child.get("id")
                         if rid == resource_id:
@@ -435,7 +440,8 @@ class EngineService:
     async def get_start_shapes(self, idwf: str) -> list[dict]:
         """Find all start shapes (StartNoneEvent stencils) in a model."""
         return [
-            shape for shape in self._flat_model.values()
+            shape
+            for shape in self._flat_model.values()
             if (shape.get("stencil") or {}).get("id") == "StartNoneEvent"
         ]
 
@@ -443,7 +449,7 @@ class EngineService:
         """Find all inbound shapes (predecessors) for a given shape."""
         previous: list[dict] = []
         for shape in self._flat_model.values():
-            for pointer in (shape.get("outgoing") or []):
+            for pointer in shape.get("outgoing") or []:
                 if not isinstance(pointer, dict):
                     continue
                 rid = pointer.get("resourceId") or pointer.get("id")
@@ -573,6 +579,7 @@ class EngineService:
         from urllib.parse import unquote_plus
 
         return unquote_plus(value)
+
 
 async def get_engine_service(
     db: AsyncSession = Depends(get_async_db),

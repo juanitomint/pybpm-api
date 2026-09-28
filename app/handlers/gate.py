@@ -1,11 +1,11 @@
-"""Gate shape handlers: ParallelGateway and Exclusive_Databased_Gateway.
+"""Gate shape handlers: ParallelGateway, Exclusive_Databased_Gateway, and EventbasedGateway.
 
-Mirrors legacy ``run_ParallelGateway()`` and
-``run_Exclusive_Databased_Gateway()`` from
+Mirrors legacy ``run_ParallelGateway()``, ``run_Exclusive_Databased_Gateway()``,
+and ``run_EventbasedGateway()`` from
 ``dna2bpm/application/modules/bpm/helpers/bpmn2.0/gate_helper.php``.
 
 Also provides a generic fallback handler for stencils that do not yet have a
-dedicated implementation (InclusiveGateway, EventbasedGateway).
+dedicated implementation (InclusiveGateway).
 """
 
 from __future__ import annotations
@@ -270,7 +270,7 @@ class ExclusiveDatabasedGatewayHandler:
         return False
 
 
-# -- GenericGatewayHandler (Inclusive/Eventbased stubs) --------------------- #
+# -- GenericGatewayHandler (InclusiveGateway stub) -------------------------- #
 
 
 class GenericGatewayHandler:
@@ -302,15 +302,12 @@ class GenericGatewayHandler:
 class EventbasedGatewayHandler:
     """Handle a token arriving on an EventbasedGateway shape.
 
-    Mirrors legacy PHP behavior (event_helper.php L350,409) which treats
-    EventbasedGateway as another gate via generic routing — movenext on all
-    outgoing flows. True BPMN event-based semantics ("wait for one catcher
-    to fire, activate only that path") are deferred: no Jason model currently
-    connects an intermediate catcher to an EventbasedGateway via sequence flow,
-    so the pass-through behavior is equivalent in practice.
+    Implements BPMN 2.0 exclusive event-based gateway semantics:
+    the gateway waits for exactly one of its connected catching events to
+    fire, then cancels all remaining pending catchers and advances through
+    the winning flow.
 
-    A future implementation could add real wait-for-single-event logic using
-    the token's external_data field for cross-invocation state.
+    Mirrors legacy ``run_EventbasedGateway()`` (gate_helper.php:297-362).
     """
 
     _STENCIL_ID = "EventbasedGateway"
@@ -320,14 +317,120 @@ class EventbasedGatewayHandler:
         return cls._STENCIL_ID
 
     async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:
+        """Check catcher status; cancel losers if one fired, else stay waiting."""
         idwf = token.idwf
         case_id = token.case_id
+        resource_id = token.resource_id
+
         outgoing = shape.get("outgoing") or []
+        if not outgoing:
+            await service.movenext(resource_id, idwf, case_id)
+            return False
+
+        # Iterate outgoing flows and check each catcher's token status.
+        # Create pending tokens for catchers that don't have one yet.
+        pending_catchers: list[dict] = []
+        fired_flow = None  # The flow whose catcher has finished
+
         for out_ref in outgoing:
-            rid = out_ref.get("resourceId") if isinstance(out_ref, dict) else None
-            if rid:
-                await service.movenext(rid, idwf, case_id)
+            if not isinstance(out_ref, dict):
+                continue
+            out_rid = out_ref.get("resourceId") or out_ref.get("id", "")
+            if not out_rid:
+                continue
+
+            out_shape = await service.get_shape(out_rid, idwf)
+            if not out_shape:
+                continue
+
+            # The gateway's outgoing flows are SequenceFlow shapes; the catcher
+            # is the first outgoing shape of the flow (mirrors legacy gate_helper.php L308-310).
+            flow_outgoing = out_shape.get("outgoing") or []
+            if not flow_outgoing:
+                continue
+
+            catcher_ref = flow_outgoing[0]
+            catcher_rid = catcher_ref.get("resourceId") if isinstance(catcher_ref, dict) else None
+            if not catcher_rid:
+                continue
+
+            # Get or create token for the catcher
+            catcher_token = await service.get_token(idwf, case_id, catcher_rid)
+            if not catcher_token:
+                # Look up the full catcher shape to get its stencil type.
+                catcher_shape = await service.get_shape(catcher_rid, idwf)
+                stencil_id = (
+                    (catcher_shape.get("stencil") or {}) if catcher_shape else {}
+                ).get("id", "")
+                await service.create_token(
+                    idwf=idwf,
+                    case_id=case_id,
+                    resource_id=catcher_rid,
+                    type_=stencil_id,
+                    status="pending",
+                )
+                catcher_token = await service.get_token(idwf, case_id, catcher_rid)
+
+            catcher_status = getattr(catcher_token, "status", None)
+
+            if catcher_status == "finished":
+                # This catcher's event has fired — exclusive selection.
+                fired_flow = out_ref
+                # Mark the flow token as finished (mirrors legacy line 330).
+                await service._set_token_status(
+                    idwf, case_id, out_rid, "finished"
+                )
+            else:
+                # Still pending/waiting — collect catcher rid for cancellation.
+                pending_catchers.append(catcher_rid)
+
+        # Set gateway to 'waiting' — it suspends until a catcher fires.
+        await service._set_token_status(
+            idwf, case_id, resource_id, "waiting"
+        )
+
+        if fired_flow is not None:
+            # One catcher has finished — cancel all pending catchers.
+            cancel_data = {
+                "canceledBy": resource_id,
+                "canceledName": (shape.get("properties") or {}).get("name", ""),
+            }
+            for pending_rid in pending_catchers:
+                await service._set_token_status(
+                    idwf, case_id, pending_rid, "canceled", data=cancel_data
+                )
+
+            # Mark gateway as finished.
+            await service._set_token_status(
+                idwf, case_id, resource_id, "finished"
+            )
+
+            # Record history for the winning flow.
+            from app.models.token import TokenHistory
+
+            chosen_flow_props = (fired_flow.get("outgoing") or [{}])[0].get("properties") if fired_flow.get("outgoing") else {}
+            history = TokenHistory(
+                idwf=idwf,
+                case_id=case_id,
+                resource_id=resource_id,
+                type="EventbasedGateway",
+                status="finished",
+                name=(
+                    str(chosen_flow_props.get("name", ""))
+                    if isinstance(chosen_flow_props, dict)
+                    else ""
+                ),
+            )
+            service.db.add(history)
+
+            # Advance through the winning flow.
+            winning_rid = (fired_flow.get("outgoing") or [{}])[0].get("resourceId") if fired_flow.get("outgoing") else None
+            if winning_rid:
+                await service.movenext(winning_rid, idwf, case_id)
+        # else: no catcher fired yet — gateway stays 'waiting' for next engine iteration
+
         return False
+
 
 
 # -- Auto-registration at import time --------------------------------------- #

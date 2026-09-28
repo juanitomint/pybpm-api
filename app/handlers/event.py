@@ -104,23 +104,23 @@ async def run_intermediate_event_throwing(
         if not catcher_rid:
             continue
 
-        # Check if token already exists.
+        # Check if token already exists (gateway handler may have created it).
         existing_token = await service.get_token(idwf, case_id, catcher_rid)
-        if existing_token and getattr(existing_token, "status", None) in (
-            "canceled",
-            "finished",
-        ):
-            continue  # Skip canceled or finished catchers.
-
-        # Create pending token on catcher and dispatch.
-        stencil = (catcher.get("stencil") or {}).get("id", "")
-        await service.create_token(
-            idwf=idwf,
-            case_id=case_id,
-            resource_id=catcher_rid,
-            type_=stencil,
-            status="pending",
-        )
+        if existing_token:
+            if getattr(existing_token, "status", None) in ("canceled", "finished"):
+                continue  # Skip canceled or finished catchers.
+            # Token exists with status 'pending'/'waiting' — gateway already
+            # created it. Still dispatch to process it.
+        else:
+            # Create pending token on catcher and dispatch.
+            stencil = (catcher.get("stencil") or {}).get("id", "")
+            await service.create_token(
+                idwf=idwf,
+                case_id=case_id,
+                resource_id=catcher_rid,
+                type_=stencil,
+                status="pending",
+            )
 
         # Dispatch to catcher handler (will call movenext on next iteration).
         await _dispatch_catcher(catcher, idwf, case_id, service)
@@ -268,7 +268,30 @@ async def run_intermediate_event_catching(
 
     if has_finished:
         await service.movenext(shape["resourceId"], idwf, case_id)
+        # Check if previous shape is an EventbasedGateway — if so, wake it up.
+        # Mirrors legacy event_helper.php L346-354.
+        # The previous shape may be a SequenceFlow; traverse through it to find
+        # the EventbasedGateway that triggered this flow.
+        previous_shapes = await service.get_previous(shape["resourceId"], idwf)
+        if previous_shapes:
+            previous = previous_shapes[0]
+            prev_stencil = (previous.get("stencil") or {}).get("id", "")
+            if prev_stencil == "EventbasedGateway":
+                await service._set_token_status(
+                    idwf, case_id, previous["resourceId"], "pending"
+                )
+            elif prev_stencil == "SequenceFlow":
+                # Traverse through the flow to find the EventbasedGateway.
+                flow_prev_shapes = await service.get_previous(previous["resourceId"], idwf)
+                if flow_prev_shapes:
+                    flow_prev = flow_prev_shapes[0]
+                    flow_prev_stencil = (flow_prev.get("stencil") or {}).get("id", "")
+                    if flow_prev_stencil == "EventbasedGateway":
+                        await service._set_token_status(
+                            idwf, case_id, flow_prev["resourceId"], "pending"
+                        )
     else:
+        # Not finished yet — keep waiting.
         data = {"name": name}
         await service._set_token_status(
             idwf, case_id, shape["resourceId"], "waiting", data=data
@@ -356,6 +379,26 @@ async def run_intermediate_timer_event(
             if current_dt >= trigger_dt:
                 # Time has elapsed — advance.
                 await service.movenext(resource_id, idwf, case_id)
+                # Check if previous shape is an EventbasedGateway — if so, wake it up.
+                # Mirrors legacy event_helper.php L403-411.
+                # The previous shape may be a SequenceFlow; traverse through it.
+                previous_shapes = await service.get_previous(shape["resourceId"], idwf)
+                if previous_shapes:
+                    previous = previous_shapes[0]
+                    prev_stencil = (previous.get("stencil") or {}).get("id", "")
+                    if prev_stencil == "EventbasedGateway":
+                        await service._set_token_status(
+                            idwf, case_id, previous["resourceId"], "pending"
+                        )
+                    elif prev_stencil == "SequenceFlow":
+                        flow_prev_shapes = await service.get_previous(previous["resourceId"], idwf)
+                        if flow_prev_shapes:
+                            flow_prev = flow_prev_shapes[0]
+                            flow_prev_stencil = (flow_prev.get("stencil") or {}).get("id", "")
+                            if flow_prev_stencil == "EventbasedGateway":
+                                await service._set_token_status(
+                                    idwf, case_id, flow_prev["resourceId"], "pending"
+                                )
         except (ValueError, TypeError):
             return  # Invalid trigger string — keep waiting.
 
@@ -390,13 +433,14 @@ def _parse_trigger_timestamp(trigger_str: str) -> datetime | None:
         pass
 
     # Try relative time (+1 hour, +30 minutes).
-    match = re.match(r"^\+?(\d+)\s*(hour|minute|day)s?$", trigger_str, re.IGNORECASE)
+    match = re.match(r"^\+?(\d+)\s*(hour|minute|min|day)s?$", trigger_str, re.IGNORECASE)
     if match:
         value = int(match.group(1))
         unit = match.group(2).lower()
         delta_map = {
             "hour": timedelta(hours=value),
             "minute": timedelta(minutes=value),
+            "min": timedelta(minutes=value),
             "day": timedelta(days=value),
         }
         return datetime.now(UTC) + delta_map.get(unit, timedelta())

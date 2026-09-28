@@ -15,6 +15,7 @@ Key responsibilities:
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
+import logging
 import sqlalchemy as sa
 from fastapi import Depends
 from sqlalchemy import select
@@ -122,14 +123,12 @@ class EngineService:
 
     async def delete_tokens(self, idwf: str, case_id: str) -> None:
         """Delete all tokens for a case (used before restart)."""
-        stmt = select(Token).where(
+        stmt = sa.delete(Token).where(
             Token.idwf == idwf,
             Token.case_id == case_id,
         )
-        result = await self.db.execute(stmt)
-        tokens = result.scalars().all()
-        for token in tokens:
-            await self.db.delete(token)
+        await self.db.execute(stmt)  # type: ignore[misc]
+        await self.db.flush()
 
     async def get_token(
         self, idwf: str, case_id: str, resource_id: str

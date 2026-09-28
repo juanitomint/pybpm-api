@@ -85,11 +85,12 @@ def _format_time(check_date: dt.datetime | None) -> str:
 
 
 def _assign_contains(user_id: int) -> BinaryExpression:
-    """Return a WHERE clause that checks whether assign contains user_id.
+    """Return a WHERE clause that checks whether assign contains user_id or idu matches.
 
-    On PostgreSQL uses CAST(assign AS JSONB) @> '[N]'::jsonb for proper array containment;
-    and plain LIKE matching via .contains() on SQLite (tests)."""
+    Falls back to idu when assign is empty (common in legacy data).
+    """
     from app.models.token import Token
+    from sqlalchemy import or_ as sa_or
 
     # Detect dialect at runtime via async_session_factory.kw['bind'] (SA 2.x async mode).
     from extensions import async_session_factory
@@ -106,11 +107,16 @@ def _assign_contains(user_id: int) -> BinaryExpression:
         # Raw text with cast+@> for proper JSONB containment on PG.
         from sqlalchemy import text as sa_text
 
-        return sa_text(  # type: ignore[return-value]
+        assign_clause = sa_text(
             f"CAST(tokens.assign AS JSONB) @> '[{user_id}]'::jsonb"
         )
+    else:
+        assign_clause = Token.assign.contains([user_id])
 
-    return Token.assign.contains([user_id])
+    # Fallback: check idu when assign is empty (legacy data compatibility)
+    idu_clause = Token.idu == user_id
+    return sa_or(assign_clause, idu_clause)
+
 
 
 def _model_name_expr() -> BinaryExpression:
@@ -127,8 +133,8 @@ def _task_status_conditions(user_id: int, status_filter: str | None = None) -> l
     """Build WHERE conditions for a task query based on lifecycle status.
 
     Mapping (mirrors pybpm-ui column logic):
-      ``pending``     → status='user' AND locked_by IS NULL  (unlocked, assigned to user)
-      ``in_progress`` → status='user' AND locked_by IS NOT NULL  (locked by someone)
+      ``pending``     → status IN ('user', 'pending') AND locked_by IS NULL  (unlocked, assigned to user)
+      ``in_progress`` → status IN ('user', 'pending') AND locked_by IS NOT NULL  (locked by someone)
       ``validating``  → status='validating' AND assigned to user
       ``done``        → status in ('finished', 'done') AND assigned to user
     """
@@ -139,12 +145,12 @@ def _task_status_conditions(user_id: int, status_filter: str | None = None) -> l
         # Default: return all active tasks (pending, in_progress, validating) — exclude done/finished
         conditions.append(Token.status.notin_(["finished", "done"]))  # type: ignore[arg-type]
     elif status_filter == "pending" or status_filter == "user":
-        # Unlocked tokens with status='user' — the pending column
-        conditions.append(Token.status == "user")
+        # Unlocked tokens with status='user' or 'pending' — the pending column
+        conditions.append(Token.status.in_(["user", "pending"]))
         conditions.append(Token.locked_by.is_(None))
     elif status_filter == "in_progress":
-        # Locked tokens with status='user' — the in-progress column
-        conditions.append(Token.status == "user")
+        # Locked tokens with status='user' or 'pending' — the in-progress column
+        conditions.append(Token.status.in_(["user", "pending"]))
         conditions.append(Token.locked_by.isnot(None))
     elif status_filter == "validating":
         conditions.append(Token.status == "validating")
@@ -158,6 +164,7 @@ def _task_status_conditions(user_id: int, status_filter: str | None = None) -> l
         )
 
     return conditions
+
 
 
 # -- Endpoints ----------------------------------------------------------------- #
@@ -391,6 +398,7 @@ async def dashboard_tasks(
         )
         .select_from(Token)
         .outerjoin(BpmModel, Token.idwf == BpmModel.idwf)
+        .outerjoin(User, Token.locked_by == User.idu)
         .where(and_(*conditions))
     )  # type: ignore[arg-type]
 

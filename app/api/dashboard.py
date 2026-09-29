@@ -474,7 +474,7 @@ async def task_done(
     which also creates pending tokens on all outgoing sequence-flow shapes (skipping ignored
     stencils like TextAnnotation).
     """
-    service = get_engine_service(db)
+    service = await get_engine_service(db)
     token = await service.get_token(body.idwf, body.case_id, body.resource_id)
 
     if token is None:

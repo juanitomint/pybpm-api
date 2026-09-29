@@ -416,6 +416,36 @@ async def dashboard_tasks(
     result = await db.execute(stmt)
     rows = result.all()
 
+    # Also include last 10 done tasks in default response for the Done column
+    if status_filter is None:
+        done_stmt = (
+            select(
+                Token.resource_id,
+                Token.type,
+                Token.title,
+                Token.status,
+                Token.check_date,
+                Token.case_id,
+                Token.idwf,
+                Token.tasktype,
+                Token.locked_by,
+                User.nick.label("nick"),
+                _model_name_expr(),
+            )
+            .select_from(Token)
+            .outerjoin(BpmModel, Token.idwf == BpmModel.idwf)
+            .outerjoin(User, Token.locked_by == User.idu)
+            .where(and_(
+                Token.status.in_(["finished", "done"]),
+                _assign_contains(user.idu),
+            ))
+            .order_by(Token.created_at.desc())
+            .limit(10)
+        )
+        done_result = await db.execute(done_stmt)
+        done_rows = done_result.all()
+        rows = list(rows) + done_rows
+
     tasks: list[TaskListItem] = []
     for row in rows:
         model_name = row.model_name or "" if row else ""

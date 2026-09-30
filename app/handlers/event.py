@@ -23,7 +23,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.api.bpm.engine import ENGINE_HANDLER_REGISTRY
-from app.services import bpm_service
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +69,8 @@ async def run_intermediate_event_throwing(
 
     if catcher_stencil:
         # Search for shapes by name/trigger.
-        result = await bpm_service.get_shapes_by_property(
-            service.db, idwf, stencil_id=catcher_stencil, name=trigger
+        result = await service.get_shapes_by_property(
+            stencil_id=catcher_stencil, name=trigger
         )
         catchers_by_trigger = [
             s for s in result if s.get("resourceId") != shape.get("resourceId")
@@ -79,8 +78,8 @@ async def run_intermediate_event_throwing(
 
     # Search by messageref (only when we have a valid catcher stencil).
     if catcher_stencil:
-        result = await bpm_service.get_shapes_by_property(
-            service.db, idwf, stencil_id=catcher_stencil, messageref=name
+        result = await service.get_shapes_by_property(
+            stencil_id=catcher_stencil, eventdefinitionref=name
         )
         catchers_by_ref = [
             s for s in result if s.get("resourceId") != shape.get("resourceId")
@@ -195,8 +194,8 @@ async def run_intermediate_event_catching(
     has_finished_thrower = False
     throwers = []
     if thrower_stencil and name:
-        result = await bpm_service.get_shapes_by_property(
-            service.db, idwf, stencil_id=thrower_stencil, name=name
+        result = await service.get_shapes_by_property(
+            stencil_id=thrower_stencil, name=name
         )
         throwers = [s for s in result if s.get("resourceId") != shape.get("resourceId")]
 

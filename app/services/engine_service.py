@@ -460,7 +460,7 @@ class EngineService:
     async def get_shapes_by_property(
         self,
         stencil_id: str | None = None,
-        **filters: str | bool | int | None,
+        **filters: Any,
     ) -> list[dict]:
         """Find all shapes in the model matching the given criteria.
 

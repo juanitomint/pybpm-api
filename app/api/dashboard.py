@@ -17,13 +17,13 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql import Select
-from sqlalchemy.sql.expression import BinaryExpression
+from sqlalchemy.sql import ColumnElement, Select
 
 from app.api.auth import get_current_user
 from app.models.bpm_model import BpmModel
@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
-async def _get_db() -> AsyncSession:  # pragma: no cover — FastAPI dep wiring
+async def _get_db() -> AsyncGenerator[AsyncSession, None]:  # pragma: no cover — FastAPI dep wiring
     from extensions import async_session_factory
 
     async with async_session_factory() as db:
@@ -84,13 +84,14 @@ def _format_time(check_date: dt.datetime | None) -> str:
     return f"{months} month{'s' if months > 1 else ''}"
 
 
-def _assign_contains(user_id: int) -> BinaryExpression:
+def _assign_contains(user_id: int) -> ColumnElement[bool]:
     """Return a WHERE clause that checks whether assign contains user_id or idu matches.
 
     Falls back to idu when assign is empty (common in legacy data).
     """
-    from app.models.token import Token
     from sqlalchemy import or_ as sa_or
+
+    from app.models.token import Token
 
     # Detect dialect at runtime via async_session_factory.kw['bind'] (SA 2.x async mode).
     from extensions import async_session_factory
@@ -119,7 +120,7 @@ def _assign_contains(user_id: int) -> BinaryExpression:
 
 
 
-def _model_name_expr() -> BinaryExpression:
+def _model_name_expr() -> ColumnElement:
     """Extract ``data.properties.name`` from the BpmModel JSON column.
 
     Uses PG's ``#>>`` path operator for nested extraction (single-shot, avoids
@@ -443,7 +444,7 @@ async def dashboard_tasks(
             .limit(10)
         )
         done_result = await db.execute(done_stmt)
-        done_rows = done_result.all()
+        done_rows = list(done_result.all())
         rows = list(rows) + done_rows
 
     tasks: list[TaskListItem] = []

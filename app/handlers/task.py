@@ -74,7 +74,7 @@ class TaskHandler:
                 props.get("name", "")
             )
             candidates = await service.get_shapes_by_property(
-                service.db, idwf, name=callable_name, tasktype=task_type_str
+                name=callable_name, tasktype=task_type_str
             )
             for candidate in candidates:
                 cand_props = candidate.get("properties") or {}

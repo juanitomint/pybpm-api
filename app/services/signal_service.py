@@ -49,6 +49,46 @@ class SignalService:
         )
         return entry
 
+    async def broadcast(
+        self,
+        name: str,
+        idwf: str,
+        case_id: str | None = None,
+        resource_id: str | None = None,
+    ) -> Signal:
+        """Broadcast a signal for global catcher matching.
+
+        Persists a signal throw with the current timestamp so any matching
+        catcher across any case can discover it.
+
+        Args:
+            name: Signal name to broadcast.
+            idwf: Workflow ID of the thrower.
+            case_id: Optional case context.
+            resource_id: Optional shape/resource ID that threw the signal.
+
+        Returns:
+            The created ``Signal`` row.
+        """
+        entry = Signal(
+            name=name,
+            idwf=idwf,
+            case_id=case_id,
+            resource_id=resource_id,
+            data_json={},
+        )
+        self.db.add(entry)
+        await self.db.flush()
+
+        logger.info(
+            "SignalService: broadcast signal %s (idwf=%s case=%s resource=%s)",
+            name,
+            idwf,
+            case_id or "global",
+            resource_id or "none",
+        )
+        return entry
+
     async def find_by_name(self, name: str) -> list[Signal]:
         """Fetch all signals matching a given name."""
         stmt = (

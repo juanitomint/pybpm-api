@@ -708,7 +708,12 @@ class IntermediateSignalEventThrowingHandler:
         signal_name = (shape.get("properties") or {}).get("name", "")
         if signal_name:
             signal_svc = SignalService(service.db)
-            await signal_svc.broadcast(signal_name)
+            await signal_svc.broadcast(
+                name=signal_name,
+                idwf=token.idwf,
+                case_id=token.case_id,
+                resource_id=shape.get("resourceId"),
+            )
             logger.info("SignalThrowingHandler: broadcast signal '%s'", signal_name)
         return True
 

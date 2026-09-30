@@ -28,6 +28,10 @@ class Signal(Base):
         nullable=True,  # global signals have no case context
     )
     idwf: Mapped[str] = mapped_column(sa.String(255), nullable=False)
+    resource_id: Mapped[str | None] = mapped_column(
+        sa.String(255),
+        nullable=True,  # global signals may not have a specific resource
+    )
     data_json: Mapped[dict | None] = mapped_column(sa.JSON(), nullable=True)
 
     # Relationships

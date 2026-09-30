@@ -457,6 +457,51 @@ class EngineService:
                     break
         return previous
 
+    async def get_shapes_by_property(
+        self,
+        stencil_id: str | None = None,
+        name: str | None = None,
+        messageref: str | None = None,
+        tasktype: str | None = None,
+    ) -> list[dict]:
+        """Find all shapes in the model matching the given criteria.
+
+        Searches ``self._flat_model`` (the eagerly-loaded flat shape tree) rather
+        than hitting the database — mirrors the legacy ``Bpm::get_shapes_by_property()``
+        used by call-activity and event handlers to locate matching shapes.
+
+        Args:
+            stencil_id: Filter by stencil ID (e.g. 'StartNoneEvent').
+            name: Filter by shape name.
+            messageref: Filter by eventdefinitionref.
+            tasktype: Filter by tasktype property.
+
+        Returns:
+            List of matching shape dicts.
+        """
+        results: list[dict] = []
+        for shape in self._flat_model.values():
+            matches = True
+            if stencil_id:
+                shape_stencil = (shape.get("stencil") or {}).get("id", "")
+                if shape_stencil != stencil_id:
+                    matches = False
+            if name and matches:
+                props = shape.get("properties") or {}
+                if props.get("name") != name:
+                    matches = False
+            if messageref and matches:
+                props = shape.get("properties") or {}
+                if props.get("eventdefinitionref") != messageref:
+                    matches = False
+            if tasktype and matches:
+                props = shape.get("properties") or {}
+                if props.get("tasktype") != tasktype:
+                    matches = False
+            if matches:
+                results.append(shape)
+        return results
+
     # -- movenext ------------------------------------------------------------ #
 
     async def movenext(self, resource_id: str, idwf: str, case_id: str) -> None:

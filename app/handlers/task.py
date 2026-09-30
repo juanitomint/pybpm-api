@@ -22,7 +22,6 @@ from app.handlers.eval_context import DataStorage, build_script_namespace
 from app.handlers.flow import _eval_script
 
 
-
 class TaskHandler:
     """Handle a token arriving on a Task shape.
 

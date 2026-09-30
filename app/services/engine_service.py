@@ -12,10 +12,11 @@ Key responsibilities:
 - Signal/trigger/subprocess handling (deferred)
 """
 
+import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from typing import Any
 
-import logging
 import sqlalchemy as sa
 from fastapi import Depends
 from sqlalchemy import select
@@ -277,7 +278,7 @@ class EngineService:
                     if child_stencil in ("Subprocess", "CollapsedSubprocess"):
                         # For nested subprocesses, look up their shape in the
                         # flat model to get their childShapes.
-                        nested = flat.get(rid)
+                        nested = self._flat_model.get(rid)
                         if nested:
                             await _cancel_descendants(nested)
 

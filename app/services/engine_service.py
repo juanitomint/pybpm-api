@@ -460,9 +460,7 @@ class EngineService:
     async def get_shapes_by_property(
         self,
         stencil_id: str | None = None,
-        name: str | None = None,
-        messageref: str | None = None,
-        tasktype: str | None = None,
+        **filters: str | bool | int | None,
     ) -> list[dict]:
         """Find all shapes in the model matching the given criteria.
 
@@ -472,12 +470,23 @@ class EngineService:
 
         Args:
             stencil_id: Filter by stencil ID (e.g. 'StartNoneEvent').
-            name: Filter by shape name.
-            messageref: Filter by eventdefinitionref.
-            tasktype: Filter by tasktype property.
+            **filters: Arbitrary ``property_key == value`` pairs.  Each key is looked
+                up in ``shape.properties``; the shape matches only when **all**
+                supplied key-value pairs match (AND logic).
 
         Returns:
             List of matching shape dicts.
+
+        Examples::
+
+            # Match by stencil only
+            shapes = await service.get_shapes_by_property(stencil_id="Task")
+
+            # Match by name + tasktype
+            shapes = await service.get_shapes_by_property(name="MyTask", tasktype="Script")
+
+            # Match by any property key
+            shapes = await service.get_shapes_by_property(callacitivity=False)
         """
         results: list[dict] = []
         for shape in self._flat_model.values():
@@ -486,18 +495,14 @@ class EngineService:
                 shape_stencil = (shape.get("stencil") or {}).get("id", "")
                 if shape_stencil != stencil_id:
                     matches = False
-            if name and matches:
+            if matches and filters:
                 props = shape.get("properties") or {}
-                if props.get("name") != name:
-                    matches = False
-            if messageref and matches:
-                props = shape.get("properties") or {}
-                if props.get("eventdefinitionref") != messageref:
-                    matches = False
-            if tasktype and matches:
-                props = shape.get("properties") or {}
-                if props.get("tasktype") != tasktype:
-                    matches = False
+                for key, value in filters.items():
+                    if value is None:
+                        continue
+                    if props.get(key) != value:
+                        matches = False
+                        break
             if matches:
                 results.append(shape)
         return results

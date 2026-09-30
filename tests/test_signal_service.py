@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -133,7 +132,6 @@ class TestSignalServiceGetSignalsByCase:
         """get_signals_by_case returns only signals for the given case/idwf."""
         signal1 = MagicMock(idsignal=1, name="sig1", idwf="wf-1", case_id="c1", resource_id="r1")
         signal2 = MagicMock(idsignal=2, name="sig2", idwf="wf-1", case_id="c1", resource_id="r2")
-        signal3 = MagicMock(idsignal=3, name="sig3", idwf="wf-2", case_id="c1", resource_id="r3")
 
         mock_result = MagicMock()
         mock_result.scalars().all.return_value = [signal1, signal2]

@@ -6,6 +6,8 @@ matching catcher can discover them later, enabling cross-case / cross-model
 signal communication between BPMN cases.
 """
 
+from datetime import UTC, datetime
+
 import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -33,9 +35,12 @@ class Signal(Base):
         nullable=True,  # global signals may not have a specific resource
     )
     data_json: Mapped[dict | None] = mapped_column(sa.JSON(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime, nullable=False, default=lambda: datetime.now(UTC), index=True,
+    )
 
     # Relationships
-    case = relationship("BpmCase", backref="signals_thrown")
+    case = relationship("BpmCase", overlaps="signals_thrown,thrower_case")
 
 
 BpmCase.signals_thrown = relationship(  # type: ignore[attr-defined]

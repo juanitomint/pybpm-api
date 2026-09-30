@@ -689,8 +689,9 @@ class IntermediateLinkEventThrowingHandler:
 class IntermediateSignalEventThrowingHandler:
     """Handle a token arriving on an IntermediateSignalEventThrowing shape.
 
-    Broadcasts the signal to SignalService so all matching catchers can pick it up.
-    Signal catchers check SignalService for active signals and advance if found.
+    Broadcasts the signal to SignalService so all matching catchers can pick it
+    up (including cross-case). Also runs the standard throwing logic to find and
+    dispatch any in-workflow catchers.
     """
 
     _STENCIL_ID = "IntermediateSignalEventThrowing"
@@ -701,8 +702,6 @@ class IntermediateSignalEventThrowingHandler:
 
     async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:
         # Broadcast signal to SignalService so all matching catchers can pick it up.
-        # Do NOT dispatch catchers directly — signal catchers need to check
-        # SignalService for active signals (which may not exist yet).
         from app.services.signal_service import SignalService
 
         signal_name = (shape.get("properties") or {}).get("name", "")
@@ -715,7 +714,10 @@ class IntermediateSignalEventThrowingHandler:
                 resource_id=shape.get("resourceId"),
             )
             logger.info("SignalThrowingHandler: broadcast signal '%s'", signal_name)
-        return True
+
+        # Also treat as a normal throwing event — find and dispatch matching catchers.
+        await run_intermediate_event_throwing(shape, token.idwf, token.case_id, service)
+        return False
 
 
 # -- Auto-registration at import time ----------------------------------------- #

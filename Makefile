@@ -11,6 +11,7 @@ deps:  ## Install dependencies using uv
 
 .PHONY: run
 run: ## Run the FastAPI development server locally
+	#@fuser -k 5000/tcp
 	.venv/bin/python -m uvicorn main:app --reload --port 5000
 
 .PHONY: migrate

@@ -10,6 +10,7 @@ from app import handlers  # triggers handler registration at import time  # noqa
 from app.api.admin import router as admin_router
 from app.api.auth import router as auth_router
 from app.api.bpm.cases import router as cases_router
+from app.api.bpm.cases_rest import router as cases_rest_router
 from app.api.bpm.engine import router as engine_router
 from app.api.bpm.event_schedule import router as event_schedule_router
 from app.api.bpm.repository import router as bpm_router
@@ -39,6 +40,7 @@ def _collect_route_paths():
         (bpm_router, ""),
         (engine_router, ""),
         (cases_router, ""),
+        (cases_rest_router, ""),
         (token_manager_router, ""),
         (dashboard_router, ""),
         (inbox_router, ""),
@@ -145,6 +147,7 @@ app.include_router(auth_router, prefix="/api/v1")
 app.include_router(bpm_router)
 app.include_router(engine_router)
 app.include_router(cases_router)
+app.include_router(cases_rest_router)
 app.include_router(token_manager_router)
 app.include_router(dashboard_router)
 app.include_router(inbox_router)  # TEMP DISABLED

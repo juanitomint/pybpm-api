@@ -5,6 +5,7 @@ Handles case instance management with idcase as the primary parameter.
 
 Endpoints:
 - GET    /data/read/{idwf}              - Get cases in Ext.js format (returns totalCount + rows)
+- GET    /data/{idwf}/{case_id}         - Get case data variables (legacy bpm/admin/get_data)
 - GET    /tokens/status/{idwf}/{idcase} - Get tokens for a case
 - GET    /{idcase}                      - Get a single case by ID
 - PATCH  /{idcase}                      - Update case attributes
@@ -200,6 +201,40 @@ async def read_cases(
         "totalCount": len(rows),
         "rows": rows,
     }
+
+
+@router.get("/data/{idwf}/{case_id}", status_code=status.HTTP_200_OK)
+async def get_case_data(
+    idwf: str,
+    case_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get case data variables for JSON Editor display.
+
+    Ported from legacy `bpm/admin/get_data/{idwf}/{case_id}` endpoint.
+    Returns the case's `data` JSON column (arbitrary case variables).
+
+    Args:
+        idwf: Workflow/model identifier
+        case_id: Case instance identifier
+
+    Returns:
+        The case data JSON object (empty dict if no data)
+
+    Raises:
+        HTTPException: 404 if case not found
+    """
+    stmt = select(BpmCase).where(BpmCase.idcase == case_id, BpmCase.idwf == idwf)
+    result = await db.execute(stmt)
+    case: BpmCase | None = result.scalar_one_or_none()
+
+    if case is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Case '{case_id}' not found in workflow '{idwf}'",
+        )
+
+    return case.data or {}
 
 
 @router.get("/tokens/status/{idwf}/{idcase}", response_model=TokenStatusResponse, status_code=status.HTTP_200_OK)

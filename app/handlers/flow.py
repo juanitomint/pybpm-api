@@ -27,7 +27,7 @@ def _safe_eval(expression: str, context: dict[str, Any] | None = None) -> bool:
         tree = ast.parse(expression.strip(), mode="eval")
         code = compile(tree, "<condition>", "eval")
         local_ns = dict(context) if context else {}
-        result = eval(code, {"__builtins__": {}}, local_ns)
+        result = eval(code, {"__builtins__": {"True": True, "False": False, "bool": bool}}, local_ns)
         return bool(result)
     except Exception:
         return False
@@ -46,7 +46,7 @@ def _eval_script(expression: str, context: dict[str, Any] | None = None) -> Any:
         tree = ast.parse(expression.strip(), mode="eval")
         code = compile(tree, "<script>", "eval")
         local_ns = dict(context) if context else {}
-        return eval(code, {"__builtins__": {}}, local_ns)
+        return eval(code, {"__builtins__": {"True": True, "False": False, "bool": bool}}, local_ns)
     except Exception:
         return None
 

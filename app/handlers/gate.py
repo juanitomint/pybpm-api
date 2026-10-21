@@ -14,8 +14,9 @@ from typing import Any
 
 import sqlalchemy as sa
 
-from app.api.bpm.engine import ENGINE_HANDLER_REGISTRY
 from app.handlers.flow import _safe_eval
+from app.api.bpm.engine import ENGINE_HANDLER_REGISTRY
+import re
 
 # -- ParallelGateway -------------------------------------------------------- #
 
@@ -108,6 +109,63 @@ def _parse_condition(cond_str: str) -> tuple[str, str]:
     return "==", s.strip("'\"")
 
 
+#: Keywords/operators that indicate gates_assignments is a full expression, not a key name.
+_EXPRESSION_OPS = frozenset(
+    ("==", "!=", "<>", ">=", "<=", ">", "<", " in ", " not in ", " and ", " or ", " not ")
+)
+
+
+def _is_expression(s: str) -> bool:
+    """Detect whether ``s`` is a full expression or a simple key name.
+
+    If it contains operators/keywords that only make sense in an expression,
+    treat it as a full expression; otherwise treat it as a key name to look
+    up in case_data.
+    """
+    if any(op in s for op in _EXPRESSION_OPS):
+        return True
+    return bool(re.search(r'\bnot\b', s))
+
+
+def _make_eval_str(assignment_expr: str, op: str, rhs: str, case_data: dict) -> str:
+    """Build the comparison string for ``_safe_eval``.
+
+    Handles four cases:
+    1. ``assignment_expr`` is a full expression → evaluate and compare result.
+    2. ``case_data[key]`` is a list → use ``in`` operator (string-converted).
+    3. ``case_data[key]`` is a bool → compare with ``is``.
+    4. Default → ``({key}) {op} '{rhs}'``.
+    """
+    if _is_expression(assignment_expr):
+        # Full expression — evaluate it and compare the result against rhs.
+        rhs_bool = rhs.lower() in ("true", "1", "yes")
+        if op == "==":
+            return f"bool({assignment_expr}) == {rhs_bool}"
+        return f"bool({assignment_expr}) != {rhs_bool}"
+
+    lhs_value = case_data.get(assignment_expr)
+
+    # Case: lhs is a list → use ``in`` operator.
+    # Convert list elements to strings (mirrors PHP loose comparison).
+    if isinstance(lhs_value, list):
+        str_list = [str(x) for x in lhs_value]
+        return f"'{rhs}' in {repr(str_list)}"
+
+    # Case: lhs is a bool → use ``is`` comparison.
+    if isinstance(lhs_value, bool):
+        rhs_bool = rhs.lower() in ("true", "1", "yes")
+        if op == "==":
+            return f"({assignment_expr}) is {rhs_bool}"
+        return f"({assignment_expr}) is not {rhs_bool}"
+
+    # Case: lhs is a comma-separated string → split and ``in``.
+    if isinstance(lhs_value, str) and "," in lhs_value:
+        return f"'{rhs}' in '{lhs_value}'.split(',')"
+
+    # Default: simple key comparison.
+    return f"({assignment_expr}) {op} '{rhs}'"
+
+
 class ExclusiveDatabasedGatewayHandler:
     """Handle a token arriving on an Exclusive_Databased_Gateway shape.
 
@@ -186,10 +244,8 @@ class ExclusiveDatabasedGatewayHandler:
 
             op, rhs = _parse_condition(cond_str)
 
-            # Build comparison expression for _safe_eval. The assignment name is
-            # resolved from case_data context; wrap in parens so it's a valid
-            # mode='eval' expression: ``(approved) == 'yes'``.
-            eval_str = f"({assignment_expr}) {op} '{rhs}'"
+            # Build the comparison expression using type-aware logic.
+            eval_str = _make_eval_str(assignment_expr, op, rhs, case_data)
 
             try:
                 eval_result = _safe_eval(eval_str, case_data)
@@ -270,25 +326,213 @@ class ExclusiveDatabasedGatewayHandler:
         return False
 
 
-# -- GenericGatewayHandler (InclusiveGateway stub) -------------------------- #
+# -- InclusiveGatewayHandler ------------------------------------------------ #
+
+
+class InclusiveGatewayHandler:
+    """Handle a token arriving on an InclusiveGateway shape.
+
+    Mirrors legacy ``run_InclusiveGateway()`` (gate_helper.php:194-295).
+
+    Behaviors:
+    - With ``gates_assignments``: evaluate against each outgoing flow;
+      all matching flows are activated (≥1 match required).
+    - Without ``gates_assignments``: synchronize inbound flows (like
+      ParallelGateway). If any outgoing flow has a condition, treat as
+      manual gate (set status 'user').
+    """
+
+    _STENCIL_ID = "InclusiveGateway"
+
+    @classmethod
+    def stencil_id(cls) -> str:
+        return cls._STENCIL_ID
+
+    async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:
+        idwf = token.idwf
+        case_id = token.case_id
+        resource_id = token.resource_id
+
+        props = shape.get("properties") or {}
+        assignment_expr = getattr(props.get("gates_assignments"), "value", None) or (
+            props.get("gates_assignments")
+            if isinstance(props.get("gates_assignments"), str)
+            else ""
+        )
+
+        # -- Case A: gates_assignments defined — evaluate each outgoing flow -- #
+        if assignment_expr:
+            from app.models.case import BpmCase as _BpmCase
+
+            fetch_stmt = sa.select(_BpmCase.data).where(
+                _BpmCase.idcase == case_id,
+                _BpmCase.idwf == idwf,
+            )
+            fetched = await service.db.execute(fetch_stmt)  # type: ignore[misc]
+            case_data = fetched.scalar_one_or_none() or {}
+            if not isinstance(case_data, dict):
+                case_data = {}
+
+            outgoing = shape.get("outgoing") or []
+            matches: list[tuple[str, dict]] = []  # (rid, shape) for each match
+
+            for out_ref in outgoing:
+                if not isinstance(out_ref, dict):
+                    continue
+                out_rid = out_ref.get("resourceId") or out_ref.get("id", "")
+                if not out_rid:
+                    continue
+
+                out_shape = await service.get_shape(out_rid, idwf)
+                if not out_shape:
+                    continue
+                out_stencil = (out_shape.get("stencil") or {}).get("id", "")
+                if out_stencil != "SequenceFlow":
+                    continue
+
+                out_props = out_shape.get("properties") or {}
+                cond_str = getattr(out_props.get("conditionexpression"), "value", None) or (
+                    out_props.get("conditionexpression")
+                    if isinstance(out_props.get("conditionexpression"), str)
+                    else ""
+                )
+                if not cond_str:
+                    continue
+
+                # InclusiveGateway uses in_array semantics: check if condition
+                # value is contained in the assignment.
+                lhs_value = case_data.get(assignment_expr)
+                if isinstance(lhs_value, list):
+                    eval_str = f"'{cond_str}' in {assignment_expr}"
+                elif isinstance(lhs_value, str) and "," in lhs_value:
+                    eval_str = f"'{cond_str}' in '{lhs_value}'.split(',')"
+                else:
+                    # Simple key lookup — compare with ==
+                    eval_str = f"({assignment_expr}) == '{cond_str}'"
+
+                try:
+                    matched = bool(_safe_eval(eval_str, case_data))
+                except Exception:
+                    matched = False
+
+                if matched:
+                    matches.append((out_rid, out_shape))
+
+            if not matches:
+                raise ValueError(
+                    f"InclusiveGateway '{props.get('name', resource_id)}' produced "
+                    f"0 matches — at least one path must match."
+                )
+
+            # Mark gateway finished, then movenext on each matched flow.
+            from app.models.token import Token as TokenModel
+
+            update_stmt = (
+                sa.update(TokenModel)
+                .where(
+                    TokenModel.idwf == idwf,
+                    TokenModel.case_id == case_id,
+                    TokenModel.resource_id == resource_id,
+                )
+                .values(status="finished")
+            )
+            await service.db.execute(update_stmt)  # type: ignore[misc]
+
+            for out_rid, _out_shape in matches:
+                await service.movenext(out_rid, idwf, case_id)
+
+            return False
+
+        # -- Case B: No gates_assignments — check inbound synchronization ----- #
+        outgoing = shape.get("outgoing") or []
+
+        # Check if any outgoing flow has a non-empty condition → manual gate.
+        has_conditions = False
+        for out_ref in outgoing:
+            if not isinstance(out_ref, dict):
+                continue
+            out_rid = out_ref.get("resourceId") or out_ref.get("id", "")
+            if not out_rid:
+                continue
+            out_shape = await service.get_shape(out_rid, idwf)
+            if not out_shape:
+                continue
+            out_props = out_shape.get("properties") or {}
+            cond_str = getattr(out_props.get("conditionexpression"), "value", None) or (
+                out_props.get("conditionexpression")
+                if isinstance(out_props.get("conditionexpression"), str)
+                else ""
+            )
+            if cond_str:
+                has_conditions = True
+                break
+
+        if has_conditions:
+            # Manual gate — set status to 'user' (like Exclusive when manual).
+            from app.models.token import Token as TokenModel
+
+            update_stmt = (
+                sa.update(TokenModel)
+                .where(
+                    TokenModel.idwf == idwf,
+                    TokenModel.case_id == case_id,
+                    TokenModel.resource_id == resource_id,
+                )
+                .values(status="user")
+            )
+            await service.db.execute(update_stmt)  # type: ignore[misc]
+            return False
+
+        # Synchronize inbound flows (like ParallelGateway).
+        inbound = await service.get_previous(resource_id, idwf)
+        all_finished = True
+        for in_shape in inbound:
+            in_rid = in_shape.get("resourceId", "")
+            if not in_rid:
+                continue
+            token_info = await service.get_token(idwf, case_id, in_rid)
+            if token_info and token_info.get("status") != "finished":
+                all_finished = False
+                break
+
+        if all_finished:
+            await service.movenext(resource_id, idwf, case_id)
+        else:
+            from app.models.token import Token as TokenModel
+
+            update_stmt = (
+                sa.update(TokenModel)
+                .where(
+                    TokenModel.idwf == idwf,
+                    TokenModel.case_id == case_id,
+                    TokenModel.resource_id == resource_id,
+                )
+                .values(status="waiting")
+            )
+            await service.db.execute(update_stmt)  # type: ignore[misc]
+
+        return False
+
+
+# -- GenericGatewayHandler (fallback for unhandled gate stencils) ---------- #
 
 
 class GenericGatewayHandler:
     """Generic fallback for gate stencils without a dedicated handler yet.
 
-    Covers: InclusiveGateway, EventbasedGateway. For v1 compat, advances via
-    movenext on all outgoing shapes with a TODO marker documenting the deferred
-    logic (PHP L194-362).
+    Covers: any future gate types not explicitly handled. Advances via
+    movenext on all outgoing shapes with a TODO marker documenting the
+    deferred logic.
     """
 
-    _STENCIL_IDS = frozenset({"InclusiveGateway"})
+    _STENCIL_IDS: frozenset = frozenset()
 
     @classmethod
     def stencil_id(cls) -> str:
         return "_generic_gateway"  # sentinel; not dispatched by this key
 
     async def handle(self, token: Any, shape: dict[str, Any], service: Any) -> bool:
-        """TODO (Phase 4b): full inclusive/event-based routing."""
+        """Forward all tokens to all outgoing flows."""
         idwf = token.idwf
         case_id = token.case_id
         outgoing = shape.get("outgoing") or []
@@ -444,5 +688,6 @@ ENGINE_HANDLER_REGISTRY.register(
 ENGINE_HANDLER_REGISTRY.register(
     EventbasedGatewayHandler._STENCIL_ID, EventbasedGatewayHandler
 )
-for _stencil in GenericGatewayHandler._STENCIL_IDS:
-    ENGINE_HANDLER_REGISTRY.register(_stencil, GenericGatewayHandler)
+ENGINE_HANDLER_REGISTRY.register(
+    InclusiveGatewayHandler._STENCIL_ID, InclusiveGatewayHandler
+)

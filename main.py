@@ -23,6 +23,7 @@ from app.api.rbac import router as rbac_router
 from app.api.users import router as users_router
 from app.core.logging import build_uvicorn_log_config
 from app.services.rbac_service import RbacService
+from app.core.scheduler import start_scheduler, stop_scheduler
 from extensions import _async_engine as engine
 
 SVG_DIR = "static/svg"
@@ -94,10 +95,10 @@ async def lifespan(app: FastAPI):
             logging.info(
                 "[startup] Registered %d routes in permission_repository", registered
             )
+    start_scheduler(app)
     yield
-    # Shutdown: no-op
 
-
+    stop_scheduler(app)
 app = FastAPI(
     title="PyBPM API",
     version="0.1.0",

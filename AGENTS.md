@@ -20,7 +20,9 @@ pybpm-api/
 ├── main.py                 # FastAPI app, middleware, router wiring
 ├── config.py               # Pydantic-settings-style Config class
 ├── extensions.py           # Async engine/session factories, DB deps
+├── conftest.py             # Root-level pytest fixtures
 ├── pyproject.toml          # Dependencies + tool config
+├── ruff.toml               # Ruff linting/formatting config
 ├── Dockerfile              # Multi-stage: python:3.14-slim + uv
 ├── docker-compose.yml      # App + PostgreSQL service
 ├── boot.sh                 # Startup: db migration → uvicorn
@@ -36,7 +38,9 @@ pybpm-api/
 │   │   │   ├── repository.py  # Model CRUD (prefix: /bpm/repository)
 │   │   │   ├── engine.py    # Case lifecycle: newcase, start, run, post, assign
 │   │   │   ├── cases.py     # Case manager endpoints (prefix: /bpm/case_manager)
+│   │   │   ├── cases_rest.py  # Case manager REST endpoints
 │   │   │   ├── tokens.py    # Token manager endpoints (prefix: /bpm/token_manager)
+│   │   │   ├── token_manager.py  # Token manager REST endpoints
 │   │   │   └── event_schedule.py  # Scheduled events (prefix: /events/schedules)
 │   │   ├── dashboard.py    # Case/task counts, task lifecycle (lock/unlock/validate/done)
 │   │   ├── inbox.py        # Inbox message filtering, CRUD
@@ -78,6 +82,7 @@ pybpm-api/
 │   │   ├── inbox.py
 │   │   ├── repository.py
 │   │   ├── token.py
+│   │   ├── user.py
 │   │   └── __init__.py
 │   └── services/
 │       ├── engine_service.py  # Core engine: token lifecycle, shape dispatch, movenext
@@ -93,8 +98,12 @@ pybpm-api/
 │       └── profile_service.py
 ├── migrations/              # Alembic migration files
 │   ├── env.py
+│   ├── script.py.mako
 │   └── versions/
+│       ├── 2026_08_26_0000-initial_schema.py
+│       └── 2026_09_30_1542-2e39fec2af79_add_signal_resource_id.py
 ├── tests/
+│   ├── __init__.py
 │   ├── conftest.py
 │   ├── test_engine_service.py
 │   ├── test_flow_handlers.py
@@ -106,17 +115,27 @@ pybpm-api/
 │   ├── test_dashboard_tasks.py
 │   ├── test_inbox_api.py
 │   ├── test_movenext_outgoing.py
-│   └── test_event_schedule_api.py
+│   ├── test_event_schedule_api.py
+│   ├── test_post_engine.py
+│   ├── test_run_engine.py
+│   ├── test_rbac_paths.py
+│   └── test_signal_service.py
 ├── tools/
 │   ├── seed_models.py
 │   ├── seed_tasktype.py
 │   ├── seed_users.py
-│   └── test_model*.py
+│   ├── seed_groups.py
+│   ├── seed_inbox.py
+│   ├── test_model_parallel.py
+│   ├── test_save_raw.py
+│   └── asyncio / sys         # Utility scripts
 └── files/
     └── images/
-        ├── model/
-        ├── svg/
-        └── zip/           # BPMN model archives (test cases)
+        ├── model/           # BPMN model JSON files
+        ├── svg/             # SVG renderings of models
+        ├── png/             # PNG thumbnails
+        ├── zip/             # BPMN model archives (test cases)
+        └── raw/             # Raw test data
 ```
 
 Note: The BPM Engine, RBAC service, Scheduler, Case Manager, Inbox, and Dashboard components have been ported from the legacy `dna2bpm/application/modules/bpm/` codebase. Remaining work: additional handler coverage for edge-case BPMN constructs, and any remaining legacy controllers not yet mapped to FastAPI endpoints.

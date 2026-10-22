@@ -434,6 +434,12 @@ def upgrade() -> None:
     op.create_index(
         op.f("ix_event_schedules_idu"), "event_schedules", ["idu"], unique=False
     )
+    op.create_index(
+        op.f("ix_event_schedules_status_trigger_time"),
+        "event_schedules",
+        ["status", "trigger_time"],
+        unique=False,
+    )
 
     # -- signals ----------------------------------------------------------------
     op.create_table(

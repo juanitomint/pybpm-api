@@ -6,6 +6,7 @@ from app.models.message import Message
 from app.models.permission_group import PermissionGroup
 from app.models.permission_repository import PermissionRepository
 from app.models.token import Token, TokenHistory
+from app.models.signal import Signal
 from app.models.user import User
 from app.models.user_group import UserGroup
 
@@ -17,6 +18,7 @@ __all__ = [
     "Message",
     "PermissionGroup",
     "PermissionRepository",
+    "Signal",
     "Token",
     "TokenHistory",
     "User",

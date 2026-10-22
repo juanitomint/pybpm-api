@@ -28,11 +28,11 @@ def _scheduler_job():
 
     async def run_dispatch():
         from app.services.scheduler_service import SchedulerService
-        from extensions import get_async_db
 
-        async with get_async_db() as db:
+        async with _scheduler_session_factory() as db:
             service = SchedulerService(db)
             fired_count = await service.dispatch_due_schedules(limit=100)
+            print(f"[SCHEDULER] fired_count={fired_count}")
             if fired_count > 0:
                 logger.info("Scheduler: dispatched %d due schedule(s)", fired_count)
 
@@ -41,6 +41,31 @@ def _scheduler_job():
         loop.run_until_complete(run_dispatch())
     finally:
         loop.close()
+
+
+# Lazy-initialized scheduler engine and session factory.
+_scheduler_engine = None
+_scheduler_session_factory = None
+
+
+def _ensure_scheduler_engine():
+    """Create or return the shared async engine and session factory for the scheduler."""
+    global _scheduler_engine, _scheduler_session_factory
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+    from sqlalchemy.pool import StaticPool
+
+    from extensions import _async_database_url
+    _url = _async_database_url()
+    if _scheduler_engine is None:
+        _scheduler_engine = create_async_engine(
+            _url,
+            echo=False,
+            poolclass=StaticPool if "sqlite" in _url else None,
+        )
+        _scheduler_session_factory = async_sessionmaker(
+            bind=_scheduler_engine, class_=AsyncSession, expire_on_commit=False
+        )
+    return _scheduler_engine, _scheduler_session_factory
 
 
 def start_scheduler(app: FastAPI) -> None:  # type: ignore[name-defined]
@@ -53,6 +78,10 @@ def start_scheduler(app: FastAPI) -> None:  # type: ignore[name-defined]
     Args:
         app: The FastAPI application instance (unused but required for lifespan wiring).
     """
+    # Ensure engine/session_factory exist before the scheduler starts (they are
+    # thread-local, so we create them in the main thread).
+    _ensure_scheduler_engine()
+
     scheduler = BackgroundScheduler()
     scheduler.add_job(
         _scheduler_job,
@@ -61,6 +90,7 @@ def start_scheduler(app: FastAPI) -> None:  # type: ignore[name-defined]
         name="Dispatch due event schedules",
         replace_existing=True,
     )
+    scheduler.start()
 
     # Store scheduler on app for lifespan shutdown.
     app.state.scheduler = scheduler  # type: ignore[attr-defined]

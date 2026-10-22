@@ -82,6 +82,7 @@ class SchedulerService:
             return 0
 
         fired_count = 0
+        signal_fired = 0
         for schedule in due:
             try:
                 from app.models.token import Token
@@ -104,12 +105,12 @@ class SchedulerService:
                     )
                     continue
 
-                # Advance the engine past this shape via movenext.
+                # Fire the timer event and continue processing pending tokens
                 service = await EngineService.create(
                     self.db, idwf=schedule.idwf, idcase=schedule.case_id
                 )
-                await service.movenext(
-                    schedule.resource_id, schedule.idwf, schedule.case_id
+                await service.run_engine(
+                    schedule.idwf, schedule.case_id, max_iterations=100
                 )
 
                 # Mark schedule as fired with updated_at timestamp.
@@ -146,7 +147,7 @@ class SchedulerService:
         except Exception as exc:
             logger.error("SchedulerService: error firing signal schedules: %s", exc)
 
-        await self.db.flush()  # type: ignore[misc]
+        await self.db.commit()
         return fired_count + signal_fired if "signal_fired" in dir() else fired_count
 
     async def _fire_signal_schedules(self) -> int:
@@ -291,6 +292,7 @@ class SchedulerService:
             .values(status="fired", updated_at=datetime.now(UTC))
         )
         await self.db.execute(update_stmt)  # type: ignore[misc]
+        await self.db.commit()
 
         logger.info("SchedulerService: manually fired %s", idschedule)
         return True

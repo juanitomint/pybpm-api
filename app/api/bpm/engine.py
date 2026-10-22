@@ -166,7 +166,6 @@ async def newcase(
         initiator_id=user.idu if user else None,
         run_manual=body.manual,
     )
-    service.db.add(case)
 
     # 4. Find start shapes and place tokens (Startcase logic from legacy L128-176).
     start_shapes = await service.get_start_shapes(body.idwf)
@@ -189,6 +188,7 @@ async def newcase(
                 status="pending",
                 title=shape.get("properties", {}).get("name"),
             )
+
 
     # 5. Save the case record (flush + commit — flush alone won't persist).
     await service.db.flush()

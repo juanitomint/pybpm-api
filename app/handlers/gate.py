@@ -143,7 +143,9 @@ def _make_eval_str(assignment_expr: str, op: str, rhs: str, case_data: dict) -> 
             return f"bool({assignment_expr}) == {rhs_bool}"
         return f"bool({assignment_expr}) != {rhs_bool}"
 
-    lhs_value = case_data.get(assignment_expr)
+    # Strip $ prefix (legacy PHP variable reference) when treating as key name.
+    lookup_expr = assignment_expr.lstrip('$') if not _is_expression(assignment_expr) else assignment_expr
+    lhs_value = case_data.get(lookup_expr)
 
     # Case: lhs is a list → use ``in`` operator.
     # Convert list elements to strings (mirrors PHP loose comparison).
@@ -155,15 +157,19 @@ def _make_eval_str(assignment_expr: str, op: str, rhs: str, case_data: dict) -> 
     if isinstance(lhs_value, bool):
         rhs_bool = rhs.lower() in ("true", "1", "yes")
         if op == "==":
-            return f"({assignment_expr}) is {rhs_bool}"
-        return f"({assignment_expr}) is not {rhs_bool}"
+            return f"({lookup_expr}) is {rhs_bool}"
+        return f"({lookup_expr}) is not {rhs_bool}"
+
+    # Case: rhs is a comma-separated string → check if lhs is in the list (PHP in_array semantics).
+    if isinstance(rhs, str) and "," in rhs:
+        return f"{repr(str(lhs_value))} in {repr(rhs.split(','))}"
 
     # Case: lhs is a comma-separated string → split and ``in``.
     if isinstance(lhs_value, str) and "," in lhs_value:
         return f"'{rhs}' in '{lhs_value}'.split(',')"
 
     # Default: simple key comparison.
-    return f"({assignment_expr}) {op} '{rhs}'"
+    return f"({lookup_expr}) {op} '{rhs}'"
 
 
 class ExclusiveDatabasedGatewayHandler:
@@ -210,8 +216,9 @@ class ExclusiveDatabasedGatewayHandler:
         )
         fetched = await service.db.execute(fetch_stmt)  # type: ignore[misc]
         case_data = fetched.scalar_one_or_none() or {}
-        if not isinstance(case_data, dict):
-            case_data = {}
+
+
+
 
         outgoing = shape.get("outgoing") or []
         results: dict[
@@ -251,10 +258,10 @@ class ExclusiveDatabasedGatewayHandler:
                 eval_result = _safe_eval(eval_str, case_data)
             except Exception:
                 eval_result = False
-
             if eval_result:
                 match_count += 1
             results[out_rid] = (out_shape, bool(eval_result))
+
 
         # If nothing matched, look for a Default-condition outgoing flow.
         if match_count == 0:
@@ -293,19 +300,12 @@ class ExclusiveDatabasedGatewayHandler:
                 winning_shape = shape_ref
                 break
 
-        from app.models.token import Token as TokenModel
         from app.models.token import TokenHistory
 
-        update_stmt = (
-            sa.update(TokenModel)
-            .where(
-                TokenModel.idwf == idwf,
-                TokenModel.case_id == case_id,
-                TokenModel.resource_id == resource_id,
-            )
-            .values(status="finished")
-        )
-        await service.db.execute(update_stmt)  # type: ignore[misc]
+        # Mark gateway as finished (increment run_count, record history).
+        gateway_token = await service.get_token(idwf, case_id, resource_id)
+        if gateway_token:
+            await service.mark_token_finished(gateway_token)
 
         chosen_flow_props = (winning_shape or {}).get("properties") or {}
         history = TokenHistory(
@@ -322,8 +322,16 @@ class ExclusiveDatabasedGatewayHandler:
         )
         service.db.add(history)  # type: ignore[attr-defined]
 
+        # Create a pending token on the winning flow, then advance it.
+        await service.upsert_token(
+            idwf=idwf,
+            case_id=case_id,
+            resource_id=winning_rid,
+            type_=(winning_shape or {}).get("stencil", {}).get("id", "SequenceFlow"),
+            status="pending",
+        )
+        await service.db.flush()
         await service.movenext(winning_rid, idwf, case_id)
-        return False
 
 
 # -- InclusiveGatewayHandler ------------------------------------------------ #

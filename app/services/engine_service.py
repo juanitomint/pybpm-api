@@ -522,31 +522,24 @@ class EngineService:
         token = await self.get_token(idwf, case_id, resource_id)
         if not token:
             return
-
         await self.mark_token_finished(token)
-
         # Find outgoing shapes and create pending tokens on them
         shape = await self.get_shape(resource_id, idwf)
         if not shape or "outgoing" not in shape:
             return
-
         ignored_shapes = {"TextAnnotation", "Association_Undirected"}
-
         for pointer in shape["outgoing"]:
             if not isinstance(pointer, dict):
                 continue
             out_rid = pointer.get("resourceId") or pointer.get("id")
             if not out_rid:
                 continue
-
             out_shape = await self.get_shape(out_rid, idwf)
             if not out_shape:
                 continue
-
             out_stencil = (out_shape.get("stencil") or {}).get("id", "")
             if out_stencil in ignored_shapes:
                 continue
-
             await self.upsert_token(
                 idwf=idwf,
                 case_id=case_id,
@@ -571,6 +564,7 @@ class EngineService:
 
         Mirrors legacy ``Engine::Run($model, $idwf, $case)`` (L183-301).
         """
+
         # Validate model exists
         stmt = select(BpmModel).where(BpmModel.idwf == idwf)
         result = await self.db.execute(stmt)
@@ -599,6 +593,7 @@ class EngineService:
                     continue
 
                 stencil_id = (shape.get("stencil") or {}).get("id", "")
+
                 handler_cls = self._get_handler(stencil_id)
                 if handler_cls:
                     instance = handler_cls()
@@ -607,10 +602,12 @@ class EngineService:
                     continue
                 if isinstance(instance, type):
                     instance = instance()
+
                 await instance.handle(token, shape, self)
 
         await self.db.flush()
         await self.db.commit()
+
 
     def _get_handler(self, stencil_id: str) -> type | None:
         """Look up a registered handler for a stencil ID.

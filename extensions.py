@@ -1,4 +1,5 @@
 from sqlalchemy import create_engine
+import os
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -15,11 +16,12 @@ class Base(DeclarativeBase):
 
 
 def _build_database_url() -> str:
-    """Return the database URL, translating SQLite to use aiosqlite if needed."""
-    url = Config.SQLALCHEMY_DATABASE_URI
-    if url.startswith("sqlite:///"):
-        return url.replace("sqlite:///", "sqlite+aiosqlite://", 1)
-    return url
+    """Return the database URL for the sync engine.
+
+    The sync engine uses the plain URL as-is (no driver suffix).
+    Only the async engine needs the driver suffix (aiosqlite, asyncpg).
+    """
+    return Config.SQLALCHEMY_DATABASE_URI
 
 
 def _async_database_url() -> str:
@@ -30,6 +32,11 @@ def _async_database_url() -> str:
     """
     url = Config.SQLALCHEMY_DATABASE_URI
     if url.startswith("sqlite:///"):
+        # Convert relative sqlite path to absolute for aiosqlite (aiosqlite requires absolute paths)
+        rel_path = url.replace("sqlite:///", "", 1)
+        if not os.path.isabs(rel_path):
+            abs_path = os.path.abspath(rel_path)
+            return f"sqlite+aiosqlite:///{abs_path}"
         return url.replace("sqlite:///", "sqlite+aiosqlite://", 1)
     if url.startswith("postgresql://") and "+asyncpg" not in url:
         return url.replace("postgresql://", "postgresql+asyncpg://", 1)

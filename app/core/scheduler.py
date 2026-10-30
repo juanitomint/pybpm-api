@@ -1,6 +1,6 @@
 """Background scheduler for event schedule dispatch.
 
-Uses APScheduler's BackgroundScheduler to poll the ``event_schedules`` table
+Uses APScheduler's AsyncIOScheduler to poll the ``event_schedules`` table
 every 60 seconds, find entries whose ``trigger_time <= NOW()`` and status is
 'pending', then advance the corresponding waiting token via movenext and mark
 the schedule as 'fired'.
@@ -8,39 +8,31 @@ the schedule as 'fired'.
 Delegates dispatch orchestration to :class:`app.services.scheduler_service.SchedulerService`.
 
 Usage:
-    From main.py, call ``start_scheduler(app)`` inside uvicorn.run wrapper.
+    From main.py, call ``start_scheduler(app)`` inside the FastAPI lifespan startup.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
 
-from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import FastAPI
 
 logger = logging.getLogger(__name__)
 
 
-def _scheduler_job():
+async def _scheduler_job():
     """APScheduler job that runs every 60 seconds — dispatches due schedules via SchedulerService."""
 
-    async def run_dispatch():
+    async with _scheduler_session_factory() as db:
         from app.services.scheduler_service import SchedulerService
 
-        async with _scheduler_session_factory() as db:
-            service = SchedulerService(db)
-            fired_count = await service.dispatch_due_schedules(limit=100)
-            print(f"[SCHEDULER] fired_count={fired_count}")
-            if fired_count > 0:
-                logger.info("Scheduler: dispatched %d due schedule(s)", fired_count)
-
-    loop = asyncio.new_event_loop()
-    try:
-        loop.run_until_complete(run_dispatch())
-    finally:
-        loop.close()
+        service = SchedulerService(db)
+        fired_count = await service.dispatch_due_schedules(limit=100)
+        print(f"[SCHEDULER] fired_count={fired_count}")
+        if fired_count > 0:
+            logger.info("Scheduler: dispatched %d due schedule(s)", fired_count)
 
 
 # Lazy-initialized scheduler engine and session factory.
@@ -51,7 +43,11 @@ _scheduler_session_factory = None
 def _ensure_scheduler_engine():
     """Create or return the shared async engine and session factory for the scheduler."""
     global _scheduler_engine, _scheduler_session_factory
-    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+    from sqlalchemy.ext.asyncio import (
+        AsyncSession,
+        async_sessionmaker,
+        create_async_engine,
+    )
     from sqlalchemy.pool import StaticPool
 
     from extensions import _async_database_url
@@ -71,18 +67,18 @@ def _ensure_scheduler_engine():
 def start_scheduler(app: FastAPI) -> None:  # type: ignore[name-defined]
     """Start the background scheduler that polls event_schedules every 60 seconds.
 
-    Registers a single ``BackgroundScheduler`` job that calls ``_scheduler_job()``
-    every 60 seconds. The scheduler is created once at app startup and runs in
-    its own thread pool, isolated from the async FastAPI event loop.
+    Registers a single ``AsyncIOScheduler`` job that calls ``_scheduler_job()``
+    every 60 seconds. The scheduler runs on the app's async event loop via the
+    default asyncio executor.
 
     Args:
         app: The FastAPI application instance (unused but required for lifespan wiring).
     """
-    # Ensure engine/session_factory exist before the scheduler starts (they are
-    # thread-local, so we create them in the main thread).
+    # Ensure engine/session_factory exist before the scheduler starts (created
+    # on the running event loop during lifespan startup).
     _ensure_scheduler_engine()
 
-    scheduler = BackgroundScheduler()
+    scheduler = AsyncIOScheduler()
     scheduler.add_job(
         _scheduler_job,
         trigger=IntervalTrigger(seconds=60),

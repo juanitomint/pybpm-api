@@ -148,7 +148,7 @@ class SchedulerService:
             logger.error("SchedulerService: error firing signal schedules: %s", exc)
 
         await self.db.commit()
-        return fired_count + signal_fired if "signal_fired" in dir() else fired_count
+        return fired_count + signal_fired
 
     async def _fire_signal_schedules(self) -> int:
         """Fire pending signal schedules whose matching signals are active.
